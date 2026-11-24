@@ -2,7 +2,6 @@
   "name": "mydiary",
   "compatibility_date": "2026-11-01",
   "assets": {
-    "directory": "./public",
-    "binding": "ASSETS"
+    "directory": "./public"
   }
 }
