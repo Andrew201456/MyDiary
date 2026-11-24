@@ -6,16 +6,25 @@ const base=resolve("public");
 const html=readFileSync(resolve(base,"index.html"),"utf8");
 const css=readFileSync(resolve(base,"app.css"),"utf8");
 const js=readFileSync(resolve(base,"app.js"),"utf8");
+const cloud=readFileSync(resolve(base,"cloud.js"),"utf8");
+const worker=readFileSync(resolve("src/index.js"),"utf8");
+const schema=readFileSync(resolve("schema.sql"),"utf8");
 const manifest=JSON.parse(readFileSync(resolve(base,"manifest.webmanifest"),"utf8"));
 const wrangler=JSON.parse(readFileSync(resolve("wrangler.jsonc"),"utf8"));
 const sw=readFileSync(resolve(base,"sw.js"),"utf8");
 
-test("Cloudflare deploys static files without a data backend",()=>{
+test("Cloudflare serves PWA and authenticated API with encrypted D1 vault",()=>{
   assert.equal(wrangler.name,"mydiary");
+  assert.equal(wrangler.main,"src/index.js");
   assert.equal(wrangler.assets.directory,"./public");
-  assert(!("binding" in wrangler.assets));
-  assert(!("d1_databases" in wrangler));
-  assert(!("kv_namespaces" in wrangler));
+  assert.equal(wrangler.assets.binding,"ASSETS");
+  assert.equal(wrangler.assets.run_worker_first,true);
+  assert.equal(wrangler.d1_databases[0].binding,"DB");
+  assert(schema.includes("diary_vaults"));
+  assert(schema.includes("diary_sessions"));
+  assert(schema.includes("diary_login_attempts"));
+  assert(worker.includes('"/api/vault"'));
+  assert(worker.includes("MYDIARY_SIGNUP_CODE"));
 });
 test("UI implements five accessible mobile tabs",()=>{
   for(const id of ["today","calendar","add","reminders","reports"])
@@ -35,12 +44,20 @@ test("Installable PWA has 192 and 512 bitmap icons",()=>{
     assert.equal(png.readUInt32BE(16),size);
     assert.equal(png.readUInt32BE(20),size);
   }
-  assert(sw.includes("mydiary-shell-v2"));
+  assert(sw.includes("mydiary-shell-v3"));
+  assert(!sw.includes("caches.put"),"Verify SW does not blindly store API replies");
+  assert(sw.includes('pathname.startsWith("/api/")'));
 });
-test("Local-first application avoids transmitting sensitive data",()=>{
-  assert(js.includes("localStorage.setItem(STORAGE"));
-  assert(!/\bfetch\s*\(/.test(js),"No background uploads of period and diary entries");
-  assert(!/google-analytics|gtag\(|facebook\.net|pixel\.js/i.test(html+js));
+test("Sensitive records leave the browser only as ciphertext",()=>{
+  assert(!js.includes("localStorage.setItem(STORAGE"));
+  assert(cloud.includes('crypto.subtle.encrypt('));
+  assert(cloud.includes('crypto.subtle.decrypt('));
+  assert(cloud.includes('"/api/"+path'));
+  assert(cloud.includes('ciphertext'));
+  assert(js.includes("cloud.queueSave(state)"));
+  assert(!/google-analytics|gtag\(|facebook\.net|pixel\.js/i.test(html+js+cloud));
   assert(js.includes("mydiary-backup-"));
-  assert(js.includes("Η επαναφορά θα ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ"));
+  assert(js.includes("Η επαναφορά JSON θα ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ"));
+  assert(html.includes('id="cloudLogin"'));
+  assert(html.includes('id="cloudSignupCode"'));
 });
