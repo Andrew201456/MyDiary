@@ -44,6 +44,12 @@ async function handle(request,env){
   if(url.pathname==="/api/register"&&method==="POST"){
     const form=await parsed(request);
     const name=form?.username,pass=form?.password;
+    // Private invitation-only registration prevents arbitrary strangers from
+    // creating diary accounts or exhausting D1 capacity.
+    if(typeof env.MYDIARY_SIGNUP_CODE!=="string"||env.MYDIARY_SIGNUP_CODE.length<12)
+      return json({error:"Ο διαχειριστής πρέπει να ρυθμίσει το Cloudflare Secret MYDIARY_SIGNUP_CODE (12+ χαρακτήρες)."},503);
+    if(!same(form?.signupCode,env.MYDIARY_SIGNUP_CODE))
+      return json({error:"Λάθος κωδικός δημιουργίας λογαριασμού."},403);
     if(!validName(name)||typeof pass!=="string"||pass.length<12||pass.length>128)
       return json({error:"Username 3–31 λατινικοί χαρακτήρες και password 12–128 χαρακτήρες."},400);
     const username=normalize(name);
