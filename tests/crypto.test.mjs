@@ -27,6 +27,15 @@ test("AES-GCM keeps diary notes and sensitive symptoms encrypted with random IV"
   await assert.rejects(decrypt(incorrect,first),"Incorrect password must never decrypt the vault");
 });
 
+test("Large imported FPC backups encrypt without overflowing JavaScript stack",async()=>{
+  const key=await derive("another-strong-password-2026","unique-vault-salt");
+  const imported={days:{},sourceFpc:{format:"fpc-v18",dailyRecords:[{
+    date:"2026-11-24",extra:"x".repeat(220000)
+  }]}};
+  const encrypted=await encrypt(key,imported);
+  assert.deepEqual(await decrypt(key,encrypted),imported);
+});
+
 test("Cloud sync only calls authenticated endpoints and avoids plaintext local persistence",()=>{
   assert(source.includes('new Uint8Array(12)'));
   assert(source.includes('crypto.subtle.encrypt('));
