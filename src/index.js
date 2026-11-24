@@ -1,5 +1,4 @@
 // MyDiary Cloudflare Worker: API and static PWA assets.
-import {restoreApprovedAccount} from "./restore-once.js";
 import {ensureDiarySchema} from "./database.js";
 const encoder=new TextEncoder();
 const json=(data,status=200)=>new Response(JSON.stringify(data),{
@@ -56,7 +55,6 @@ async function handle(request,env){
   }catch{
     return json({error:"Η βάση του MyDiary δεν είναι διαθέσιμη."},503);
   }
-  if(url.pathname==="/api/restore-once")return restoreApprovedAccount(request,env.DB);
   const registrationEnabled=typeof env.MYDIARY_SIGNUP_CODE==="string"&&env.MYDIARY_SIGNUP_CODE.length>=12;
   if(health)return json({ok:true,storage:"d1-encrypted-vault",registrationEnabled});
   if(url.pathname==="/api/register"&&method==="POST"){
