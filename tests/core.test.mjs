@@ -4,13 +4,15 @@ import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
 
 const source=readFileSync(resolve("public/app.js"),"utf8");
-const beforeEvents=source.slice(0,source.indexOf('document.addEventListener("click"'));
+const beforeEvents=source.slice(0,source.indexOf('document.addEventListener("click"'))
+  .replace(/^import[^\n]*\n/gm,"");
 const doc={getElementById(id){return id==="main"?this.main:{textContent:"",hidden:false};},querySelectorAll(){return [];},main:{innerHTML:"",dataset:{},querySelectorAll(){return [];}}};
 const data=new Map();
 const storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};
 function boot(){
   return new Function("document","localStorage","window","Notification","sessionStorage",
-    beforeEvents+"\nreturn {state,cycleStats,predictions,validDate,renderToday,renderCalendar,renderReports,renderAdd,renderReminders,renderSettings,save,load,periodStarts,addDays,main,normalizeEntry,isPredictedPeriod,selected};"
+    beforeEvents+'\ncloud={ready:true,username:"tester",queueSave:v=>{localStorage.setItem("mock-cloud",JSON.stringify(v));return true}};\n'+
+    "return {state,cycleStats,predictions,validDate,renderToday,renderCalendar,renderReports,renderAdd,renderReminders,renderSettings,save,load,periodStarts,addDays,main,normalizeEntry,isPredictedPeriod,selected};"
   )(doc,storage,{scrollTo(){}},{permission:"default"},{});
 }
 test("local state does not predict without a recorded period",()=>{
@@ -35,7 +37,9 @@ test("cycle and period averages use real continuous period segments",()=>{
   assert.equal(typeof prediction.ovulation,"string");
   assert(app.isPredictedPeriod(prediction.period,prediction));
   assert(app.save());
-  assert(storage.getItem("mydiary-local-v1").includes("2026-09-01"));
+  assert(storage.getItem("mock-cloud").includes("2026-09-01"));
+  assert.equal(storage.getItem("mydiary-local-v1"),null,
+    "New cloud saves must not write plaintext health data to localStorage");
 });
 test("screens render live UI for period, reports, notes, settings and reminders",()=>{
   data.clear();
@@ -87,7 +91,8 @@ test("batch period markers preserve existing symptoms and notes",()=>{
   };
   const app=new Function("document","localStorage","window","Notification",
     "sessionStorage","setTimeout","clearTimeout",
-    beforeEvents+"\nreturn {getState:()=>state,saveEntry,normalizeEntry,normalizeSettings};"
+    beforeEvents+'\ncloud={ready:true,username:"tester",queueSave:v=>{localStorage.setItem("mock-cloud",JSON.stringify(v));return true}};\n'+
+    "return {getState:()=>state,saveEntry,normalizeEntry,normalizeSettings};"
   )(docLocal,storage,{scrollTo(){}},{permission:"default"},{},()=>0,()=>{});
   app.getState().settings.periodLength=5;
   app.getState().days["2026-11-03"]=app.normalizeEntry({
