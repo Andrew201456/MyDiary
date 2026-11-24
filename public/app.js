@@ -72,7 +72,7 @@ function cycleStats(){
     if(size)runs.push(size);
   }
   const period=runs.length?Math.round(runs.slice(-6).reduce((a,b)=>a+b,0)/Math.min(6,runs.length)):Math.max(1,Math.min(12,int(state.settings.periodLength,5)));
-  return {starts,cycle,period,lengths};
+  return {starts,cycle,periodLength:period,lengths};
 }
 function predictions(){
   const stats=cycleStats(),today=isoDate();
@@ -134,7 +134,7 @@ function renderToday(){
   if(logged?.symptoms?.length)todayParts.push(logged.symptoms.join(", "));
   if(logged?.water)todayParts.push(logged.water+" ποτήρια νερό");
   main.innerHTML='<div class="soft-card hero"><small>ΤΟ ΗΜΕΡΟΛΟΓΙΟ ΣΟΥ 🌸</small><strong>'+escapeHtml(headline)+'</strong><p>'+escapeHtml(subtitle)+'</p><div class="hero-actions"><button class="btn" data-go="add">+ Καταχώρηση</button><button class="btn sec" data-go="calendar">Ημερολόγιο</button></div></div>'+
-    '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+'</strong><small>ημέρες</small></div><div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.period+'</strong><small>ημέρες</small></div></div>'+
+    '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+'</strong><small>ημέρες</small></div><div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.periodLength+'</strong><small>ημέρες</small></div></div>'+
     '<div class="section-title"><h2>Σήμερα</h2><button class="text-action" data-go="add">Επεξεργασία</button></div>'+
     '<div class="card">'+(todayParts.length?'<p>'+escapeHtml(todayParts.join(" · "))+'</p>':'<p class="muted">Δεν έχεις καταχωρήσει κάτι για σήμερα.</p>')+
     '<button class="btn ghost mini" data-go="add">+ Προσθήκη στοιχείων</button></div>'+
@@ -216,7 +216,7 @@ function renderReports(){
     return;
   }
   const p=predictions();
-  main.innerHTML='<section class="reports-summary"><h2>Μέση τιμή</h2><div class="report-line"><span>Διάρκεια κύκλου</span><div><strong>'+p.cycle+'</strong><em>Ημέρες</em></div></div><div class="report-line"><span>Διάρκεια περιόδου</span><div><strong>'+p.period+'</strong><em>Ημέρες</em></div></div></section>'+
+  main.innerHTML='<section class="reports-summary"><h2>Μέση τιμή</h2><div class="report-line"><span>Διάρκεια κύκλου</span><div><strong>'+p.cycle+'</strong><em>Ημέρες</em></div></div><div class="report-line"><span>Διάρκεια περιόδου</span><div><strong>'+p.periodLength+'</strong><em>Ημέρες</em></div></div></section>'+
     '<div class="report-grid">'+REPORTS.map(([key,emoji,label])=>'<button class="report-tile" data-report="'+key+'"><span class="report-emoji" aria-hidden="true">'+emoji+'</span><span>'+label+'</span></button>').join("")+'</div>'+
     '<p class="hint">Οι μέσοι όροι υπολογίζονται από τις καταχωρήσεις σου. Οι προβλέψεις είναι μόνο ενδεικτικές.</p>';
 }
