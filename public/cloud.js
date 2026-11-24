@@ -64,6 +64,25 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
   const handleRemote=async()=>{
     const remote=await api("vault","GET",undefined,token);
     revision=remote.revision;
+    const cached=localStorage.getItem(cacheKey());
+    if(cached){
+      try{
+        const item=JSON.parse(cached);
+        const backup=await decrypt(key,item.ciphertext);
+        if(item.revision===revision){
+          // Upload was interrupted before a confirmed server response.
+          // Continue from this encrypted, locally retained snapshot.
+          applyState(backup);
+          pending=backup;
+          setStatus("Ανακτήθηκαν εκκρεμείς αλλαγές. Συγχρονισμός…");
+          return;
+        }
+        // Another device advanced the cloud revision; never overwrite it.
+        setStatus("Υπάρχει διαφορετικό εκκρεμές αντίγραφο στη συσκευή. Μπορείς να το εξάγεις από τις Ρυθμίσεις.","error");
+      }catch(error){
+        setStatus("Δεν διαβάστηκε το εκκρεμές κρυπτογραφημένο αντίγραφο.","error");
+      }
+    }
     if(remote.ciphertext){
       const result=await decrypt(key,remote.ciphertext);
       applyState(result);
@@ -129,7 +148,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
           localStorage.removeItem("mydiary-local-v1");
         }catch{}
       }
-      setStatus("Αποθηκεύτηκε στο Cloudflare ✓","ok");
+      if(!pending)setStatus("Αποθηκεύτηκε στο Cloudflare ✓","ok");
     }catch(error){
       if(!pending)pending=snapshot;
       if(error.conflict){
@@ -156,7 +175,42 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
     scheduled=setTimeout(()=>{scheduled=null;flush()},450);
     return true;
   }
-  function sync(){if(!pending){setStatus("Τα δεδομένα είναι ενημερωμένα.","ok");return}halted=false;if(scheduled)clearTimeout(scheduled);scheduled=null;flush()}
+  async function sync(){
+    if(locked||!token||!key)return;
+    if(pending||uploading){
+      if(halted){setStatus("Εκκρεμεί σύγκρουση. Εξήγαγε πρώτα το τοπικό αντίγραφο.","error");return}
+      if(scheduled)clearTimeout(scheduled);
+      scheduled=null;flush();return;
+    }
+    try{
+      const remote=await api("vault","GET",undefined,token);
+      if(remote.revision===revision){
+        setStatus("Το Cloudflare είναι ενημερωμένο ✓","ok");
+      }else if(remote.revision>revision&&remote.ciphertext){
+        const snapshot=await decrypt(key,remote.ciphertext);
+        applyState(snapshot);
+        revision=remote.revision;
+        setStatus("Φορτώθηκαν οι νεότερες εγγραφές από το Cloudflare ✓","ok");
+      }else{
+        setStatus("Ασυμφωνία cloud revision. Δεν άλλαξα κανένα δεδομένο.","error");
+      }
+    }catch(error){setStatus("Αποτυχία ελέγχου cloud: "+error.message,"error")}
+  }
+  async function downloadPending(){
+    if(!key||!user){setStatus("Συνδέσου πρώτα.","error");return}
+    try{
+      const record=localStorage.getItem(cacheKey());
+      const local=record?await decrypt(key,JSON.parse(record).ciphertext):pending;
+      if(!local){setStatus("Δεν υπάρχει εκκρεμές αντίγραφο.","ok");return}
+      const blob=new Blob([JSON.stringify({app:"MyDiary",data:local,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download="mydiary-unsynced-"+user+".json";
+      document.body.append(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+      setStatus("Κατέβηκε αντίγραφο. Φύλαξέ το σε ασφαλές μέρος.","ok");
+    }catch(error){setStatus("Δεν μπόρεσε να εξαχθεί το τοπικό αντίγραφο.","error")}
+  }
   async function logout(){
     if(pending||uploading){
       setStatus("Υπάρχουν μη συγχρονισμένα δεδομένα. Πρώτα κατέβασε αντίγραφο.","error");
@@ -177,10 +231,12 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
       document.getElementById("cloudSubmit").textContent=
         event.target.value==="register"?"Δημιουργία λογαριασμού":"Σύνδεση";
     });
-    window.addEventListener("online",()=>{if(pending&&!halted)sync()});
+    window.addEventListener("online",()=>{if(!halted)sync()});
+    window.addEventListener("focus",()=>{if(!pending&&!uploading&&!locked)sync()});
+    setInterval(()=>{if(!pending&&!uploading&&!locked)sync()},90000);
     window.addEventListener("beforeunload",event=>{
       if(pending||uploading){event.preventDefault();event.returnValue="";}
     });
   }
-  return {mount,queueSave,sync,logout,get ready(){return !locked},get username(){return user},get pending(){return !!pending||uploading}};
+  return {mount,queueSave,sync,logout,downloadPending,get ready(){return !locked},get username(){return user},get pending(){return !!pending||uploading}};
 }
