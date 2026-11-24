@@ -3,7 +3,14 @@
  * The cryptographic key and password never go into localStorage.
  */
 const enc=new TextEncoder(),dec=new TextDecoder();
-const pack=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const pack=bytes=>{
+  // A full FPC archive may be hundreds of KB. Spreading all bytes into one
+  // String.fromCharCode call overflows the JS argument limit on mobile.
+  let text="";
+  for(let i=0;i<bytes.length;i+=16384)
+    text+=String.fromCharCode(...bytes.subarray(i,i+16384));
+  return btoa(text).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+};
 const unpack=value=>{
   const raw=atob(value.replace(/-/g,"+").replace(/_/g,"/"));
   return Uint8Array.from(raw,c=>c.charCodeAt(0));
