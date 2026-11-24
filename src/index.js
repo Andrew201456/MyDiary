@@ -1,4 +1,5 @@
 // MyDiary Cloudflare Worker: API and static PWA assets.
+import {ensureDiarySchema} from "./database.js";
 const encoder=new TextEncoder();
 const json=(data,status=200)=>new Response(JSON.stringify(data),{
   status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
@@ -48,7 +49,13 @@ async function handle(request,env){
     return new Response(asset.body,{status:asset.status,statusText:asset.statusText,headers});
   }
   if(!env.DB)return json({error:"Η βάση Cloudflare D1 δεν έχει ρυθμιστεί. Πρόσθεσε το binding DB."},503);
-  if(url.pathname==="/api/health"&&method==="GET")return json({ok:true,storage:"d1-encrypted-vault"});
+  const health=url.pathname==="/api/health"&&method==="GET";
+  try{
+    await ensureDiarySchema(env.DB,health);
+  }catch{
+    return json({error:"Η βάση του MyDiary δεν είναι διαθέσιμη."},503);
+  }
+  if(health)return json({ok:true,storage:"d1-encrypted-vault"});
   if(url.pathname==="/api/register"&&method==="POST"){
     const form=await parsed(request);
     const name=form?.username,pass=form?.password;

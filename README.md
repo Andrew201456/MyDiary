@@ -11,34 +11,17 @@
 - **Online:** username/password, Cloudflare D1, συγχρονισμός μεταξύ κινητών και υπολογιστών. Ο browser κρυπτογραφεί τις εγγραφές με AES-GCM **πριν** την αποθήκευσή τους στη βάση.
 - **Εισαγωγή αρχικού Period Calendar .fpc:** επιλέγεις το backup από τις Ρυθμίσεις και το app το μετατρέπει τοπικά χωρίς ανάγνωση των παλιών account/password πεδίων.
 
-## Online ρύθμιση Cloudflare — ΑΠΑΡΑΙΤΗΤΗ
+## Ρύθμιση Cloudflare
 
-**Η βάση Cloudflare D1 δεν δημιουργείται αυτόματα από GitHub commit.** Το repository περιλαμβάνει Worker API, SQL schema και UI, αλλά η πραγματική βάση πρέπει να δημιουργηθεί στο δικό σου Cloudflare account. Δεν πρέπει να χρησιμοποιείται το app για πραγματικά δεδομένα πριν ολοκληρωθεί η ρύθμιση και οι έλεγχοι.
+Στο συνδεδεμένο Workers Builds, η εντολή δημοσίευσης είναι `npx wrangler deploy`. Το Wrangler συνδέει τη βάση D1 `mydiary-db` ως `DB` και τη δημιουργεί αν λείπει. Η πρώτη κλήση στο API δημιουργεί από το `schema.sql` τους πίνακες και το ευρετήριο που λείπουν. Το `/api/health` ελέγχει απευθείας τη βάση. Το token του deployment χρειάζεται δικαιώματα για Workers και D1.
 
-**Για Windows:** έχει προστεθεί και ο οδηγός `scripts/setup-cloudflare.ps1`, που εκτελεί τη δημιουργία D1, περνά το UUID στο Wrangler, δημιουργεί τους πίνακες, ζητά το Secret και κάνει deploy. Μπορείς να τον εκτελέσεις από PowerShell αφού ανοίξεις το project:
+Για να επιτρέψεις τη **δημιουργία νέων λογαριασμών**, όρισε μία φορά το μυστικό `MYDIARY_SIGNUP_CODE` στο **Workers & Pages → mydiary → Settings → Variables and Secrets**. Χρειάζεται τουλάχιστον 12 χαρακτήρες. Οι υπάρχοντες χρήστες συνδέονται με τα δικά τους στοιχεία.
 
-```powershell
-.\scripts\setup-cloudflare.ps1
-```
+Για δημοσίευση από Windows, άνοιξε PowerShell στον φάκελο του έργου και εκτέλεσε `.\scripts\setup-cloudflare.ps1`. Το script δημοσιεύει με τον λογαριασμό Cloudflare που επιλέγεις και ζητά τον κωδικό εγγραφής μόνο αν λείπει. Για τοπική ανάπτυξη, εκτέλεσε `npm ci`, όρισε `MYDIARY_SIGNUP_CODE` σε τοπικό αρχείο `.dev.vars` και εκτέλεσε `npm run dev`.
 
-Αν προτιμάς χειροκίνητα, ακολούθησε τα παρακάτω βήματα.
+## Εισαγωγή παλιού ημερολογίου
 
-Από τον φάκελο του `MyDiary` (Windows PowerShell ή terminal), αφού συνδεθείς με `npx wrangler login`:
-
-1. `npm install`
-2. `npx wrangler d1 create mydiary-db` — κράτησε το **database_id (UUID)** που θα εμφανιστεί.
-3. Άνοιξε το `wrangler.jsonc` και αντικατάστησε **μόνο** το `REPLACE_WITH_YOUR_D1_DATABASE_ID` με αυτό το UUID.
-4. `npx wrangler d1 execute mydiary-db --remote --file=./schema.sql` — δημιουργεί τους πίνακες χρηστών, συνεδριών, κρυπτογραφημένου ιστορικού και αποτυχημένων login.
-5. `npx wrangler secret put MYDIARY_SIGNUP_CODE` — πρόσθεσε έναν **δικό σου τυχαίο κωδικό δημιουργίας λογαριασμών τουλάχιστον 12 χαρακτήρων**, ο οποίος χρησιμοποιείται μόνο για να επιτρέπεις νέες εγγραφές. **Ποτέ** μην τον ανεβάζεις στο GitHub ή στο chat.
-6. `npx wrangler deploy` — δημοσιεύει τον Worker μαζί με το frontend.
-
-Έπειτα άνοιξε το `https://mydiary.<το-workers-subdomain>.workers.dev`, επέλεξε **Νέος λογαριασμός**, φτιάξε username και **διαφορετικό** password τουλάχιστον 12 χαρακτήρων και συμπλήρωσε τον signup κωδικό.
-
-Στο **Μενού → Ρυθμίσεις → Εισαγωγή Period Calendar .fpc ή JSON**, διάλεξε το αρχείο σου. Δες τον αριθμό των παλιών εγγραφών, επιβεβαίωσε την εισαγωγή και **περίμενε να εμφανιστεί «Αποθηκεύτηκε στο Cloudflare ✓»**. Στη δεύτερη συσκευή συνδέσου με τα ίδια στοιχεία και κάνε **Έλεγχος συγχρονισμού**.
-
-Αν το GitHub είναι ήδη συνδεδεμένο με αυτόματο Cloudflare deployment, ο χειροκίνητος `wrangler deploy` μπορεί να χρειάζεται μόνο στην πρώτη ρύθμιση. Το **Cloudflare secret** και το πραγματικό **D1 database_id** παραμένουν υποχρεωτικά.
-
-Για τοπική ανάπτυξη: `npm run dev` αφού βάλεις έγκυρο database_id στο Wrangler config. Το `--remote` στο βήμα δημιουργίας πινάκων αφορά μόνο την cloud βάση — **μην** το αφαιρείς αν θέλεις πραγματικό online συγχρονισμό.
+Συνδέσου στο MyDiary και άνοιξε **Μενού → Ρυθμίσεις και αντίγραφα → Εισαγωγή Period Calendar .fpc ή JSON**. Διάλεξε το αρχικό `.fpc`. Η προεπισκόπηση αναφέρει πόσες ημέρες θα προστεθούν και πόσες υπάρχουν ήδη. Επιβεβαίωσε και περίμενε την ένδειξη **Αποθηκεύτηκε στο Cloudflare ✓**. Για έλεγχο από δεύτερη συσκευή, συνδέσου στον ίδιο λογαριασμό και άνοιξε το Ημερολόγιο.
 
 ## Τι περιλαμβάνει η πρώτη έκδοση
 
@@ -59,11 +42,11 @@
 
 ## Δημοσίευση από GitHub στο Cloudflare
 
-Στο Cloudflare Dashboard → **Workers & Pages → Create application → Import a repository** επίλεξε `Andrew201456/MyDiary`. Το repository έχει **Workers API + static assets + D1 binding**. Πριν το πρώτο επιτυχημένο deployment πρέπει να έχεις δημιουργήσει D1, αντικαταστήσει το placeholder UUID στο `wrangler.jsonc` και ρυθμίσει το Secret `MYDIARY_SIGNUP_CODE`. Το deploy command είναι `npx wrangler deploy`. **Το commit από μόνο του δεν δημιουργεί database ή ολοκληρωμένη online εφαρμογή.**
+Στο **Workers & Pages → Create application → Import a repository** επίλεξε `Andrew201456/MyDiary` και τον κλάδο `main`. Η κατάσταση κάθε δημοσίευσης εμφανίζεται στο GitHub στο **Workers Builds: mydiary**.
 
 Η εγκατάσταση PWA από Android Chrome γίνεται μέσω «Εγκατάσταση εφαρμογής» στο μενού του browser. Σε iPhone γίνεται μέσω Safari → Κοινοποίηση → Προσθήκη στην Αρχική οθόνη.
 
-**Δοκιμές κώδικα:** `npm test` (Node.js 20+). Για live smoke test, δες `/api/health` αφού δημοσιευθεί.
+Για ανάπτυξη και δημοσίευση χρησιμοποίησε Node.js 22.12 ή νεότερο. Εκτέλεσε `npm test` για τις δοκιμές και άνοιξε το `/api/health` για έλεγχο της συνδεδεμένης βάσης.
 
 ## Προσοχή
 

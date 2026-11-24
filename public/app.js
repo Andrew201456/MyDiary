@@ -291,6 +291,18 @@ function exportBackup(){
   const url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download="mydiary-backup-"+isoDate()+".json";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function mergeFpcArchive(previous,incoming){
+  if(incoming?.format!=="fpc-v18")return previous;
+  if(previous?.format!=="fpc-v18")return incoming;
+  const mergeRows=(oldRows,newRows)=>{
+    const old=Array.isArray(oldRows)?oldRows:[];
+    const incomingRows=Array.isArray(newRows)?newRows:[];
+    const seen=new Set(old.map(row=>JSON.stringify(row)));
+    return old.concat(incomingRows.filter(row=>!seen.has(JSON.stringify(row))));
+  };
+  return {...previous,periodRecords:mergeRows(previous.periodRecords,incoming.periodRecords),
+    dailyRecords:mergeRows(previous.dailyRecords,incoming.dailyRecords)};
+}
 async function importBackup(file){
   const isFpc=/\.fpc$/i.test(file?.name||"");
   if(!file||file.size>(isFpc?12_000_000:6_000_000)){
@@ -321,7 +333,7 @@ async function importBackup(file){
       version:2,
       settings:oldCount?{...state.settings}:normalizeSettings(backup.settings),
       days:{...state.days},
-      sourceFpc:backup.sourceFpc?.format==="fpc-v18"?backup.sourceFpc:state.sourceFpc
+      sourceFpc:mergeFpcArchive(state.sourceFpc,backup.sourceFpc)
     }:defaultData();
     if(!isLegacy){
       next.settings=normalizeSettings(backup.settings);

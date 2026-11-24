@@ -14,6 +14,7 @@ function mockDb(){
         bind(...args){params=args;return this;},
         async first(){
           const [key]=params;
+          if(sql.includes("FROM sqlite_schema"))return {present:5};
           if(sql.includes("FROM diary_users WHERE username=?"))
             return users.get(key)||null;
           if(sql.includes("FROM diary_login_attempts WHERE username=?"))
@@ -133,4 +134,14 @@ test("health route never exposes account or vault data",async()=>{
   assert.equal(result.status,200);
   assert.deepEqual((await result.json()).ok,true);
   assert.equal(result.headers.get("Cache-Control"),"no-store");
+});
+
+test("health checks D1 again after an earlier successful request",async()=>{
+  const db=mockDb();
+  const env={DB:db};
+  assert.equal((await fetchApi(env,"/api/health")).status,200);
+  db.prepare=()=>{throw Error("D1 temporarily unavailable")};
+  const unavailable=await fetchApi(env,"/api/health");
+  assert.equal(unavailable.status,503);
+  assert.equal(unavailable.data.ok,undefined);
 });

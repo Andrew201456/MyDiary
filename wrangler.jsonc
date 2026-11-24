@@ -10,8 +10,10 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "mydiary-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_name": "mydiary-db"
     }
+  ],
+  "rules": [
+    { "type": "Text", "globs": ["**/*.sql"], "fallthrough": true }
   ]
 }

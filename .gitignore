@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.fpc
+mydiary-backup-*.json
+mydiary-unsynced-*.json
+MyDiary_Private_Import_*.json

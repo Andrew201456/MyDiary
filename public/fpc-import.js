@@ -105,6 +105,16 @@ function emptyFpcDay(){
     weight:"",temperature:"",intimacy:false,ovulation:false,
     sleep:"",water:0,breast:false,notes:""};
 }
+function waterCups(value){
+  if(typeof value==="string"&&value.trimStart().startsWith("[")){
+    let cups;
+    try{cups=JSON.parse(value)}catch{return 0}
+    if(!Array.isArray(cups)||!cups.every(cup=>cup&&Number.isFinite(cup.cupSize)&&cup.cupSize>0))return 0;
+    return Math.min(30,cups.length);
+  }
+  const count=Number(value);
+  return Number.isInteger(count)&&count>=0&&count<=30?count:0;
+}
 /**
  * Returns private MyDiary data and counts. 84 negative-duration records in
  * the supplied sample are interpreted as *estimated* durations; raw signs
@@ -142,8 +152,7 @@ export async function convertFpc(buffer){
     if(row.ovulation_test===1||row.ovulation_test===2)e.ovulation=true;
     if(row.breast===true||row.breast==="1"||row.breast==="true")e.breast=true;
     if(typeof row.note==="string")e.notes=row.note.slice(0,2000);
-    const water=Number(row.water);
-    if(Number.isInteger(water)&&water>=0&&water<=30)e.water=water;
+    if(row.water!==undefined)e.water=waterCups(row.water);
     const sleep=Number(row.sleep);
     if(Number.isFinite(sleep)&&sleep>0&&sleep<=24)e.sleep=String(sleep);
     const {uid,date,db_date,editTime,...archive}=row;
