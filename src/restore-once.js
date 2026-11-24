@@ -7,7 +7,7 @@ const path = "/api/restore-once";
 const headers = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
+  "Referrer-Policy": "same-origin",
   "Content-Security-Policy": "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 };
 const answer = (body,status=200) => Response.json(body,{status,headers});
