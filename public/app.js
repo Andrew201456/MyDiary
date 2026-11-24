@@ -423,6 +423,7 @@ $("topAction").addEventListener("click",()=>{selected=isoDate();calendarMonth=mo
 // the original local-only app, and removed AFTER confirmed cloud upload.
 render();
 cloud=createCloud({
+  canRefresh:()=>page!=="add"&&page!=="settings",
   readState:()=>state,
   applyState:raw=>{
     const fresh=defaultData();
