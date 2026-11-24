@@ -179,8 +179,8 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     scheduled=setTimeout(()=>{scheduled=null;flush()},450);
     return true;
   }
-  async function sync(){
-    if(locked||!token||!key||!canRefresh())return;
+  async function sync(force=false){
+    if(locked||!token||!key||(!force&&!canRefresh()))return;
     if(pending||uploading){
       if(halted){setStatus("Εκκρεμεί σύγκρουση. Εξήγαγε πρώτα το τοπικό αντίγραφο.","error");return}
       if(scheduled)clearTimeout(scheduled);
@@ -204,7 +204,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     if(!key||!user){setStatus("Συνδέσου πρώτα.","error");return}
     try{
       const record=localStorage.getItem(cacheKey());
-      const local=record?await decrypt(key,JSON.parse(record).ciphertext):pending;
+      const local=pending||(record?await decrypt(key,JSON.parse(record).ciphertext):null);
       if(!local){setStatus("Δεν υπάρχει εκκρεμές αντίγραφο.","ok");return}
       const blob=new Blob([JSON.stringify({app:"MyDiary",data:local,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"});
       const url=URL.createObjectURL(blob);
