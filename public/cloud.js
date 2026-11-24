@@ -121,10 +121,12 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
     try{
       if(mode==="register"){
         if(pass.length<12)throw Error("Το password πρέπει να έχει τουλάχιστον 12 χαρακτήρες.");
-        await api("register","POST",{username:name,password:pass});
+        const signupCode=document.getElementById("cloudSignupCode").value;
+        await api("register","POST",{username:name,password:pass,signupCode});
       }
       await enter(name,pass);
       document.getElementById("cloudPassword").value="";
+      document.getElementById("cloudSignupCode").value="";
     }catch(error){setStatus(error.message||"Σφάλμα σύνδεσης.");}
     finally{button.disabled=false}
   }
@@ -228,8 +230,10 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
     document.body.classList.add("cloud-locked");
     document.getElementById("cloudForm").addEventListener("submit",submit);
     document.getElementById("cloudMode").addEventListener("change",event=>{
+      const isNew=event.target.value==="register";
+      document.getElementById("cloudSignupWrap").hidden=!isNew;
       document.getElementById("cloudSubmit").textContent=
-        event.target.value==="register"?"Δημιουργία λογαριασμού":"Σύνδεση";
+        isNew?"Δημιουργία λογαριασμού":"Σύνδεση";
     });
     window.addEventListener("online",()=>{if(!halted)sync()});
     window.addEventListener("focus",()=>{if(!pending&&!uploading&&!locked)sync()});
