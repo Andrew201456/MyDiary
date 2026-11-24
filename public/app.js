@@ -21,13 +21,24 @@ const validDate=iso=>/^\d{4}-\d{2}-\d{2}$/.test(iso)&&isoDate(parseDay(iso))===i
 const dateLabel=iso=>new Intl.DateTimeFormat("el-GR",{day:"numeric",month:"short",year:"numeric"}).format(parseDay(iso));
 const monthLabel=(year,month)=>new Intl.DateTimeFormat("el-GR",{month:"long",year:"numeric"}).format(new Date(year,month,1));
 const monthOf=iso=>{const d=parseDay(iso);return {year:d.getFullYear(),month:d.getMonth()}};
-const defaultData=()=>({version:1,settings:{...DEFAULTS},days:{}});
+function normalizeSettings(value){
+  const s=value&&typeof value==="object"&&!Array.isArray(value)?value:{};
+  return {
+    cycleLength:Math.max(15,Math.min(75,int(s.cycleLength,29))),
+    periodLength:Math.max(1,Math.min(12,int(s.periodLength,5))),
+    remindPeriod:s.remindPeriod!==false,
+    remindWater:s.remindWater===true,
+    remindWaterHour:Math.max(0,Math.min(23,Math.floor(int(s.remindWaterHour,12)))),
+    theme:"pastel"
+  };
+}
+const defaultData=()=>({version:1,settings:normalizeSettings(DEFAULTS),days:{}});
 let state=defaultData();
 function load(){
   try{
     const raw=JSON.parse(localStorage.getItem(STORAGE)||"null");
     if(raw&&typeof raw==="object"&&raw.days&&typeof raw.days==="object"&&!Array.isArray(raw.days)){
-      state={version:1,settings:{...DEFAULTS,...(raw.settings||{})},days:{}};
+      state={version:1,settings:normalizeSettings(raw.settings),days:{}};
       for(const [day,entry] of Object.entries(raw.days))
         if(validDate(day)&&entry&&typeof entry==="object"&&!Array.isArray(entry))
           state.days[day]=normalizeEntry(entry);
@@ -177,6 +188,7 @@ function renderAdd(){
   main.innerHTML='<form id="entryForm"><div class="soft-card"><div class="eyebrow">ΗΜΕΡΗΣΙΑ ΚΑΤΑΧΩΡΗΣΗ</div>'+field("Ημερομηνία","entryDate","date",selected,"required")+'</div>'+
     '<div class="card"><div class="toggle-row"><label for="entryPeriod"><strong>🌸 Περίοδος</strong></label><input type="checkbox" id="entryPeriod" '+(e.period?"checked":"")+'></div>'+
     '<label class="entry-label" for="entryFlow">Ένταση ροής</label><select class="form-control" id="entryFlow">'+["ελαφριά","μέτρια","έντονη"].map(v=>'<option value="'+v+'" '+(e.flow===v?"selected":"")+'>'+v+'</option>').join("")+'</select>'+
+    '<div class="toggle-row"><label for="entryPeriodRange">Σήμανση περιόδου για '+int(state.settings.periodLength,5)+' ημέρες συνολικά<br><small class="muted">Προαιρετικό · διατηρεί άλλες καταχωρήσεις</small></label><input type="checkbox" id="entryPeriodRange"></div>'+
     '<label class="entry-label">Διάθεση</label><div class="pill-row" id="moodPills">'+MOODS.map(v=>'<button class="pill '+(e.mood===v?"selected":"")+'" type="button" data-mood="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>').join("")+'</div>'+
     '<label class="entry-label">Συμπτώματα</label><div class="checklist" id="symptomPills">'+SYMPTOMS.map(v=>'<button class="pill '+(e.symptoms.includes(v)?"selected":"")+'" type="button" data-symptom="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>').join("")+'</div></div>'+
     '<div class="card"><div class="form-grid"><div>'+field("Βάρος (kg)","entryWeight","number",e.weight,'min="1" max="499" step="0.1" inputmode="decimal"')+'</div><div>'+field("Θερμοκρασία (°C)","entryTemp","number",e.temperature,'min="30" max="44" step="0.01" inputmode="decimal"')+'</div><div>'+field("Ύπνος (ώρες)","entrySleep","number",e.sleep,'min="0" max="24" step="0.5" inputmode="decimal"')+'</div><div>'+field("Νερό (ποτήρια)","entryWater","number",e.water,'min="0" max="30" step="1"')+'</div></div>'+
@@ -242,9 +254,25 @@ function saveEntry(){
     intimacy:$("entryIntimacy").checked,ovulation:$("entryOvulation").checked,
     breast:$("entryBreast").checked,notes:$("entryNotes").value
   });
+  const range=$("entryPeriodRange").checked;
+  if(range&&!entry.period){toast("Επίλεξε πρώτα «Περίοδος» για πολλές ημέρες.");return}
+  // An explicit multi-day action only toggles period/flow on later days.
+  // Existing symptoms, notes, temperature etc. are never overwritten.
+  const daysCount=range?Math.max(1,Math.min(12,int(state.settings.periodLength,5))):1;
+  const previous=JSON.stringify(state.days);
   state.days[day]=entry;
-  if(!save())return;
-  selected=day;calendarMonth=monthOf(day);toast("Η καταχώρηση αποθηκεύτηκε 🌷");setPage("calendar");
+  for(let i=1;i<daysCount;i++){
+    const next=addDays(day,i);
+    const existing=normalizeEntry(state.days[next]||{});
+    state.days[next]={...existing,period:true,flow:entry.flow};
+  }
+  if(!save()){
+    state.days=JSON.parse(previous);
+    return;
+  }
+  selected=day;calendarMonth=monthOf(day);
+  toast(range?"Καταχωρήθηκαν "+daysCount+" ημέρες περιόδου 🌷":"Η καταχώρηση αποθηκεύτηκε 🌷");
+  setPage("calendar");
 }
 function exportBackup(){
   const blob=new Blob([JSON.stringify({app:"MyDiary",exportedAt:new Date().toISOString(),data:state},null,2)],{type:"application/json"});
@@ -260,7 +288,7 @@ async function importBackup(file){
       throw Error("Μη έγκυρο αντίγραφο.");
     if(!confirm("Η επαναφορά θα ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ όλες τις τωρινές εγγραφές. Συνέχεια;"))return;
     const fresh=defaultData();
-    fresh.settings={...DEFAULTS,...(backup.settings||{})};
+    fresh.settings=normalizeSettings(backup.settings);
     let count=0;
     for(const [day,entry] of Object.entries(backup.days)){
       if(!validDate(day)||!entry||typeof entry!=="object")continue;
