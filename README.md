@@ -15,6 +15,14 @@
 
 **Η βάση Cloudflare D1 δεν δημιουργείται αυτόματα από GitHub commit.** Το repository περιλαμβάνει Worker API, SQL schema και UI, αλλά η πραγματική βάση πρέπει να δημιουργηθεί στο δικό σου Cloudflare account. Δεν πρέπει να χρησιμοποιείται το app για πραγματικά δεδομένα πριν ολοκληρωθεί η ρύθμιση και οι έλεγχοι.
 
+**Για Windows:** έχει προστεθεί και ο οδηγός `scripts/setup-cloudflare.ps1`, που εκτελεί τη δημιουργία D1, περνά το UUID στο Wrangler, δημιουργεί τους πίνακες, ζητά το Secret και κάνει deploy. Μπορείς να τον εκτελέσεις από PowerShell αφού ανοίξεις το project:
+
+```powershell
+.\scripts\setup-cloudflare.ps1
+```
+
+Αν προτιμάς χειροκίνητα, ακολούθησε τα παρακάτω βήματα.
+
 Από τον φάκελο του `MyDiary` (Windows PowerShell ή terminal), αφού συνδεθείς με `npx wrangler login`:
 
 1. `npm install`
