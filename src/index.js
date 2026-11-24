@@ -37,8 +37,16 @@ async function current(request,db){
 }
 async function handle(request,env){
   const url=new URL(request.url),method=request.method;
-  if(!url.pathname.startsWith("/api/"))
-    return env.ASSETS.fetch(request);
+  if(!url.pathname.startsWith("/api/")){
+    const asset=await env.ASSETS.fetch(request);
+    const headers=new Headers(asset.headers);
+    headers.set("Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    headers.set("X-Content-Type-Options","nosniff");
+    headers.set("Referrer-Policy","no-referrer");
+    headers.set("X-Frame-Options","DENY");
+    return new Response(asset.body,{status:asset.status,statusText:asset.statusText,headers});
+  }
   if(!env.DB)return json({error:"Η βάση Cloudflare D1 δεν έχει ρυθμιστεί. Πρόσθεσε το binding DB."},503);
   if(url.pathname==="/api/health"&&method==="GET")return json({ok:true,storage:"d1-encrypted-vault"});
   if(url.pathname==="/api/register"&&method==="POST"){
