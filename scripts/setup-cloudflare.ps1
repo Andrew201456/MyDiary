@@ -23,7 +23,7 @@ if ($databaseId -notmatch "^$uuidPattern$") { throw "Invalid D1 database UUID." 
 $configPath=Join-Path (Get-Location) "wrangler.jsonc"
 $config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 $config.d1_databases[0].database_id=$databaseId
-$config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding utf8
+[System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 12), (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "Configured D1 binding DB for database $databaseId"
 Write-Host "Creating D1 schema..."
 npx wrangler d1 execute mydiary-db --remote --file=./schema.sql
