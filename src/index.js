@@ -55,13 +55,14 @@ async function handle(request,env){
   }catch{
     return json({error:"Η βάση του MyDiary δεν είναι διαθέσιμη."},503);
   }
-  if(health)return json({ok:true,storage:"d1-encrypted-vault"});
+  const registrationEnabled=typeof env.MYDIARY_SIGNUP_CODE==="string"&&env.MYDIARY_SIGNUP_CODE.length>=12;
+  if(health)return json({ok:true,storage:"d1-encrypted-vault",registrationEnabled});
   if(url.pathname==="/api/register"&&method==="POST"){
     const form=await parsed(request);
     const name=form?.username,pass=form?.password;
     // Private invitation-only registration prevents arbitrary strangers from
     // creating diary accounts or exhausting D1 capacity.
-    if(typeof env.MYDIARY_SIGNUP_CODE!=="string"||env.MYDIARY_SIGNUP_CODE.length<12)
+    if(!registrationEnabled)
       return json({error:"Ο διαχειριστής πρέπει να ρυθμίσει το Cloudflare Secret MYDIARY_SIGNUP_CODE (12+ χαρακτήρες)."},503);
     if(!same(form?.signupCode,env.MYDIARY_SIGNUP_CODE))
       return json({error:"Λάθος κωδικός δημιουργίας λογαριασμού."},403);

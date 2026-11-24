@@ -132,8 +132,10 @@ test("registration requires private signup secret, login verifies credentials, v
 test("health route never exposes account or vault data",async()=>{
   const result=await worker.fetch(request("/api/health"),{DB:mockDb(),ASSETS:{fetch:async()=>new Response("ok")}});
   assert.equal(result.status,200);
-  assert.deepEqual((await result.json()).ok,true);
+  assert.deepEqual(await result.json(),{ok:true,storage:"d1-encrypted-vault",registrationEnabled:false});
   assert.equal(result.headers.get("Cache-Control"),"no-store");
+  const enabled=await fetchApi({DB:mockDb(),MYDIARY_SIGNUP_CODE:"synthetic-test-invitation"},"/api/health");
+  assert.deepEqual(enabled.data,{ok:true,storage:"d1-encrypted-vault",registrationEnabled:true});
 });
 
 test("health checks D1 again after an earlier successful request",async()=>{
