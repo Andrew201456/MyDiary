@@ -1,4 +1,4 @@
-import {convertFpc} from "./fpc-import.js";
+import {convertFpc,restoreArchivedWater} from "./fpc-import.js";
 import {createCloud} from "./cloud.js";
 "use strict";
 const STORAGE="mydiary-local-v1";
@@ -314,6 +314,7 @@ async function importBackup(file){
     const backup=parsed?.app==="MyDiary"?parsed.data:parsed;
     if(!backup||!backup.days||typeof backup.days!=="object"||Array.isArray(backup.days))
       throw Error("Μη έγκυρο αντίγραφο.");
+    if(!isFpc)restoreArchivedWater(parsed);
     const days=Object.entries(backup.days);
     if(days.length>20000)throw Error("Το αντίγραφο περιέχει υπερβολικά πολλές εγγραφές.");
     const isLegacy=isFpc||backup.sourceFpc?.format==="fpc-v18";

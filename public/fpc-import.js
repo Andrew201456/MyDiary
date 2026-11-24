@@ -115,6 +115,21 @@ function waterCups(value){
   const count=Number(value);
   return Number.isInteger(count)&&count>=0&&count<=30?count:0;
 }
+
+// Older FPC-to-JSON exports kept cup events in the archive but displayed zero.
+export function restoreArchivedWater(backup){
+  if(backup?.importInfo?.source!=="Period Calendar FPC")return;
+  const data=backup.data,rows=data?.sourceFpc?.dailyRecords;
+  if(data?.sourceFpc?.format!=="fpc-v18"||!data.days||!Array.isArray(rows))return;
+  for(const row of rows){
+    if(!row||!Object.hasOwn(data.days,row.date))continue;
+    const day=data.days[row.date];
+    if(day&&typeof day==="object"&&!day.water){
+      const count=waterCups(row.water);
+      if(count)day.water=count;
+    }
+  }
+}
 /**
  * Returns private MyDiary data and counts. 84 negative-duration records in
  * the supplied sample are interpreted as *estimated* durations; raw signs
