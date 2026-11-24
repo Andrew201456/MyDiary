@@ -52,9 +52,9 @@ async function api(path,method="GET",payload,token){
   }
   return data;
 }
-export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
+export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,canRefresh=()=>true}){
   let token=null,key=null,user="",revision=0,locked=true,uploading=false;
-  let pending=null,halted=false,scheduled=null;
+  let pending=null,halted=false,scheduled=null,cacheWarning="";
   const gate=document.getElementById("cloudLogin");
   const notice=document.getElementById("cloudMessage");
   const setStatus=(message,type="info")=>{
@@ -78,7 +78,8 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
           return;
         }
         // Another device advanced the cloud revision; never overwrite it.
-        setStatus("Υπάρχει διαφορετικό εκκρεμές αντίγραφο στη συσκευή. Μπορείς να το εξάγεις από τις Ρυθμίσεις.","error");
+        cacheWarning="Υπάρχει διαφορετικό εκκρεμές αντίγραφο στη συσκευή. Εξήγαγέ το από τις Ρυθμίσεις.";
+        setStatus(cacheWarning,"error");
       }catch(error){
         setStatus("Δεν διαβάστηκε το εκκρεμές κρυπτογραφημένο αντίγραφο.","error");
       }
@@ -108,7 +109,8 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
     locked=false;
     onReady?.(user);
     if(pending)queueSave(pending);
-    setStatus("Cloud ενεργό • "+user,"ok");
+    if(cacheWarning)setStatus(cacheWarning,"error");
+    else setStatus("Cloud ενεργό • "+user,"ok");
   }
   async function submit(event){
     event.preventDefault();
@@ -178,7 +180,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
     return true;
   }
   async function sync(){
-    if(locked||!token||!key)return;
+    if(locked||!token||!key||!canRefresh())return;
     if(pending||uploading){
       if(halted){setStatus("Εκκρεμεί σύγκρουση. Εξήγαγε πρώτα το τοπικό αντίγραφο.","error");return}
       if(scheduled)clearTimeout(scheduled);
@@ -219,7 +221,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady}){
       return;
     }
     try{if(token)await api("logout","POST",{},token)}catch{}
-    token=null;key=null;user="";locked=true;revision=0;
+    token=null;key=null;user="";locked=true;revision=0;cacheWarning="";
     gate.hidden=false;document.body.classList.add("cloud-locked");
     document.getElementById("cloudPassword").value="";
     onReady?.("");
