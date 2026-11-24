@@ -26,6 +26,10 @@
       <select id="cloudMode" required><option value="login">Σύνδεση</option><option value="register">Νέος λογαριασμός</option></select>
       <label for="cloudUsername">Username</label>
       <input id="cloudUsername" type="text" autocomplete="username" minlength="3" maxlength="31" pattern="[a-zA-Z][a-zA-Z0-9._-]{2,30}" required placeholder="π.χ. mydiary">
+      <div id="cloudSignupWrap" hidden>
+        <label for="cloudSignupCode">Κωδικός νέου λογαριασμού</label>
+        <input id="cloudSignupCode" type="password" autocomplete="off" placeholder="Από τον διαχειριστή">
+      </div>
       <label for="cloudPassword">Password</label>
       <input id="cloudPassword" type="password" autocomplete="current-password" required placeholder="Ο προσωπικός σου κωδικός">
       <button id="cloudSubmit" type="submit">Σύνδεση</button>
