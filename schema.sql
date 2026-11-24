@@ -19,3 +19,10 @@ CREATE TABLE IF NOT EXISTS diary_vaults (
  ciphertext TEXT NOT NULL,
  updated_at INTEGER NOT NULL
 );
+
+-- Per-username login throttle: no raw IP addresses or health information.
+CREATE TABLE IF NOT EXISTS diary_login_attempts (
+ username TEXT PRIMARY KEY,
+ window_start INTEGER NOT NULL,
+ failures INTEGER NOT NULL
+);
