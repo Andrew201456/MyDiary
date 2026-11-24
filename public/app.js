@@ -1,3 +1,4 @@
+import {convertFpc} from "./fpc-import.js";
 "use strict";
 const STORAGE="mydiary-local-v1";
 const DEFAULTS={cycleLength:29,periodLength:5,remindPeriod:true,remindWater:false,remindWaterHour:12,theme:"pastel"};
@@ -32,13 +33,14 @@ function normalizeSettings(value){
     theme:"pastel"
   };
 }
-const defaultData=()=>({version:1,settings:normalizeSettings(DEFAULTS),days:{}});
+const defaultData=()=>({version:2,settings:normalizeSettings(DEFAULTS),days:{},sourceFpc:null});
 let state=defaultData();
 function load(){
   try{
     const raw=JSON.parse(localStorage.getItem(STORAGE)||"null");
     if(raw&&typeof raw==="object"&&raw.days&&typeof raw.days==="object"&&!Array.isArray(raw.days)){
-      state={version:1,settings:normalizeSettings(raw.settings),days:{}};
+      state={version:2,settings:normalizeSettings(raw.settings),days:{},
+        sourceFpc:raw.sourceFpc?.format==="fpc-v18"?raw.sourceFpc:null};
       for(const [day,entry] of Object.entries(raw.days))
         if(validDate(day)&&entry&&typeof entry==="object"&&!Array.isArray(entry))
           state.days[day]=normalizeEntry(entry);
@@ -239,7 +241,9 @@ function renderSettings(){
    '<button class="btn full" id="saveSettings" style="margin-top:15px">Αποθήκευση ρυθμίσεων</button></div>'+
    '<div class="card"><h2>Τα δεδομένα σου</h2><p class="hint">Κράτησε αντίγραφο αν αλλάξεις κινητό ή καθαρίσεις τα δεδομένα browser.</p>'+
    '<button class="btn sec full" id="exportData">↓ Εξαγωγή αντιγράφου JSON</button>'+
-   '<label class="entry-label" for="importFile">Επαναφορά από αντίγραφο JSON</label><input class="form-control" type="file" accept=".json,application/json" id="importFile">'+
+   '<label class="entry-label" for="importFile">Εισαγωγή Period Calendar .fpc ή JSON</label><input class="form-control" type="file" accept=".fpc,.json,application/json" id="importFile">'+
+   '<p class="hint">Το αρχείο διαβάζεται στη συσκευή. Δεν ανεβαίνει στο Cloudflare. Οι ήδη καταχωρημένες ημέρες δεν αντικαθίστανται όταν εισάγεις παλιό FPC.</p>'+
+   (state.sourceFpc?.periodRecords?'<p class="notice">📚 Παλαιό ιστορικό: '+state.sourceFpc.periodRecords.length+' κύκλοι · '+(state.sourceFpc.dailyRecords?.length||0)+' ημερήσιες καταχωρήσεις. Οι αρνητικές διάρκειες έχουν σημανθεί ως εκτιμήσεις.</p>':'')+
    '<button class="btn danger full" id="eraseData" style="margin-top:24px">Διαγραφή όλων των δεδομένων</button></div>'+
    '<div class="notice">Το ημερολόγιο κύκλου δεν προβλέπει με ακρίβεια την ωορρηξία και δεν μπορεί να χρησιμοποιηθεί για αντισύλληψη.</div>';
 }
@@ -280,25 +284,54 @@ function exportBackup(){
   a.href=url;a.download="mydiary-backup-"+isoDate()+".json";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 async function importBackup(file){
-  if(!file||file.size>5_000_000){toast("Το αρχείο είναι πολύ μεγάλο ή άκυρο.");return}
+  const isFpc=/\.fpc$/i.test(file?.name||"");
+  if(!file||file.size>(isFpc?12_000_000:6_000_000)){
+    toast("Το αρχείο είναι πολύ μεγάλο ή άκυρο.");return;
+  }
   try{
-    const parsed=JSON.parse(await file.text());
+    toast("Διαβάζω το αντίγραφο…");
+    const parsed=isFpc?await convertFpc(await file.arrayBuffer()):JSON.parse(await file.text());
     const backup=parsed?.app==="MyDiary"?parsed.data:parsed;
     if(!backup||!backup.days||typeof backup.days!=="object"||Array.isArray(backup.days))
       throw Error("Μη έγκυρο αντίγραφο.");
-    if(!confirm("Η επαναφορά θα ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ όλες τις τωρινές εγγραφές. Συνέχεια;"))return;
-    const fresh=defaultData();
-    fresh.settings=normalizeSettings(backup.settings);
-    let count=0;
-    for(const [day,entry] of Object.entries(backup.days)){
-      if(!validDate(day)||!entry||typeof entry!=="object")continue;
-      if(++count>20000)throw Error("Υπερβολικά πολλές καταχωρήσεις.");
-      fresh.days[day]=normalizeEntry(entry);
+    const days=Object.entries(backup.days);
+    if(days.length>20000)throw Error("Το αντίγραφο περιέχει υπερβολικά πολλές εγγραφές.");
+    const isLegacy=isFpc||backup.sourceFpc?.format==="fpc-v18";
+    const oldCount=Object.keys(state.days).length;
+    const valid=days.filter(([day,entry])=>validDate(day)&&entry&&typeof entry==="object"&&!Array.isArray(entry));
+    const overlap=valid.filter(([day])=>Object.hasOwn(state.days,day)).length;
+    const message=isLegacy?
+      "Βρέθηκαν "+(parsed.importInfo?.periodRecords??backup.sourceFpc?.periodRecords?.length??0)+
+      " κύκλοι και "+(parsed.importInfo?.dailyRecords??backup.sourceFpc?.dailyRecords?.length??0)+
+      " ημερήσιες εγγραφές. Θα προστεθούν "+(valid.length-overlap)+
+      " νέες ημέρες χωρίς να αντικατασταθούν οι "+overlap+
+      " υπάρχουσες. Οι αρνητικές διάρκειες FPC είναι εκτιμήσεις. Συνέχεια;":
+      "Η επαναφορά JSON θα ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ όλες τις τωρινές εγγραφές. Συνέχεια;";
+    if(!confirm(message))return;
+    const prior=state;
+    const next=isLegacy?{
+      version:2,
+      settings:oldCount?{...state.settings}:normalizeSettings(backup.settings),
+      days:{...state.days},
+      sourceFpc:backup.sourceFpc?.format==="fpc-v18"?backup.sourceFpc:state.sourceFpc
+    }:defaultData();
+    if(!isLegacy){
+      next.settings=normalizeSettings(backup.settings);
+      next.sourceFpc=backup.sourceFpc?.format==="fpc-v18"?backup.sourceFpc:null;
     }
-    const old=state;state=fresh;
-    if(!save()){state=old;return}
-    toast("Επαναφέρθηκαν "+count+" ημέρες.");setPage("today");
-  }catch(e){toast(e.message||"Αδυναμία ανάγνωσης αντιγράφου.")}
+    let added=0;
+    for(const [day,entry] of valid){
+      if(isLegacy&&Object.hasOwn(next.days,day))continue;
+      next.days[day]=normalizeEntry(entry);
+      added++;
+    }
+    state=next;
+    if(!save()){state=prior;return}
+    toast(isLegacy?"Προστέθηκαν "+added+" ημέρες από παλιό backup.":"Επαναφέρθηκαν "+added+" ημέρες.");
+    setPage("today");
+  }catch(error){
+    toast("Αδυναμία εισαγωγής: "+(error?.message||"Άγνωστο αρχείο."));
+  }
 }
 function checkReminders(){
   if(document.visibilityState==="hidden"||Notification.permission!=="granted")return;
