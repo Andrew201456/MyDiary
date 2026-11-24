@@ -24,8 +24,8 @@ const monthOf=iso=>{const d=parseDay(iso);return {year:d.getFullYear(),month:d.g
 function normalizeSettings(value){
   const s=value&&typeof value==="object"&&!Array.isArray(value)?value:{};
   return {
-    cycleLength:Math.max(15,Math.min(75,int(s.cycleLength,29))),
-    periodLength:Math.max(1,Math.min(12,int(s.periodLength,5))),
+    cycleLength:Math.max(15,Math.min(75,Math.round(int(s.cycleLength,29)))),
+    periodLength:Math.max(1,Math.min(12,Math.round(int(s.periodLength,5)))),
     remindPeriod:s.remindPeriod!==false,
     remindWater:s.remindWater===true,
     remindWaterHour:Math.max(0,Math.min(23,Math.floor(int(s.remindWaterHour,12)))),
@@ -90,7 +90,7 @@ function predictions(){
   const ref=stats.starts.at(-1)||null;
   if(!ref)return {period:null,ovulation:null,fertile:[],...stats};
   let predicted=addDays(ref,stats.cycle);
-  for(let i=0;i<24&&diffDays(predicted,today)<-stats.period;i++)predicted=addDays(predicted,stats.cycle);
+  for(let i=0;i<500&&diffDays(predicted,today)<-stats.periodLength;i++)predicted=addDays(predicted,stats.cycle);
   const ovulation=addDays(predicted,-14),fertile=[];
   for(let i=-5;i<=1;i++)fertile.push(addDays(ovulation,i));
   return {period:predicted,ovulation,fertile,...stats};
