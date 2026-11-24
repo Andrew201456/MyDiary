@@ -386,7 +386,7 @@ document.addEventListener("click",event=>{
     state.settings.periodLength=Math.max(1,Math.min(12,int($("periodSetting").value,5)));
     save();toast("Οι ρυθμίσεις αποθηκεύτηκαν.");render();return;
   }
-  if(target.id==="cloudSyncNow"){cloud?.sync();return}
+  if(target.id==="cloudSyncNow"){cloud?.sync(true);return}
   if(target.id==="cloudPendingDownload"){cloud?.downloadPending();return}
   if(target.id==="cloudLogout"){cloud?.logout();return}
   if(target.id==="exportData"){exportBackup();return}
