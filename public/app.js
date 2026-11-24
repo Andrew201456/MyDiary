@@ -1,4 +1,5 @@
 import {convertFpc} from "./fpc-import.js";
+import {createCloud} from "./cloud.js";
 "use strict";
 const STORAGE="mydiary-local-v1";
 const DEFAULTS={cycleLength:29,periodLength:5,remindPeriod:true,remindWater:false,remindWaterHour:12,theme:"pastel"};
@@ -35,6 +36,7 @@ function normalizeSettings(value){
 }
 const defaultData=()=>({version:2,settings:normalizeSettings(DEFAULTS),days:{},sourceFpc:null});
 let state=defaultData();
+let cloud=null;
 function load(){
   try{
     const raw=JSON.parse(localStorage.getItem(STORAGE)||"null");
@@ -62,8 +64,10 @@ function normalizeEntry(input){
   };
 }
 function save(){
-  try{localStorage.setItem(STORAGE,JSON.stringify(state));return true}
-  catch(error){toast("Δεν αποθηκεύτηκε. Έλεγξε τον διαθέσιμο χώρο.");return false}
+  // Never store new diary records as plaintext in localStorage.
+  // Every edit queues a client-encrypted upload to the user's private vault.
+  if(!cloud?.ready){toast("Συνδέσου για να αποθηκεύσεις στο Cloudflare.");return false}
+  return cloud.queueSave(state);
 }
 const entries=()=>Object.entries(state.days).sort(([a],[b])=>a.localeCompare(b));
 function periodStarts(){
@@ -239,6 +243,9 @@ function renderSettings(){
    '<div class="card"><h2>Προεπιλεγμένες διάρκειες</h2><label class="entry-label" for="cycleSetting">Διάρκεια κύκλου (ημέρες)</label><input class="form-control" type="number" min="15" max="75" id="cycleSetting" value="'+int(state.settings.cycleLength,29)+'">'+
    '<label class="entry-label" for="periodSetting">Διάρκεια περιόδου (ημέρες)</label><input class="form-control" type="number" min="1" max="12" id="periodSetting" value="'+int(state.settings.periodLength,5)+'">'+
    '<button class="btn full" id="saveSettings" style="margin-top:15px">Αποθήκευση ρυθμίσεων</button></div>'+
+   '<div class="card"><h2>Online λογαριασμός</h2><p class="hint">Συνδεδεμένος: '+escapeHtml(cloud?.username||"")+'. Το ημερολόγιο συγχρονίζεται κρυπτογραφημένο μέσω Cloudflare D1.</p>'+
+   '<button type="button" class="btn sec full" id="cloudSyncNow">Έλεγχος συγχρονισμού</button>'+
+   '<button type="button" class="btn ghost full" id="cloudLogout" style="margin-top:9px">Αποσύνδεση</button></div>'+
    '<div class="card"><h2>Τα δεδομένα σου</h2><p class="hint">Κράτησε αντίγραφο αν αλλάξεις κινητό ή καθαρίσεις τα δεδομένα browser.</p>'+
    '<button class="btn sec full" id="exportData">↓ Εξαγωγή αντιγράφου JSON</button>'+
    '<label class="entry-label" for="importFile">Εισαγωγή Period Calendar .fpc ή JSON</label><input class="form-control" type="file" accept=".fpc,.json,application/json" id="importFile">'+
@@ -378,6 +385,8 @@ document.addEventListener("click",event=>{
     state.settings.periodLength=Math.max(1,Math.min(12,int($("periodSetting").value,5)));
     save();toast("Οι ρυθμίσεις αποθηκεύτηκαν.");render();return;
   }
+  if(target.id==="cloudSyncNow"){cloud?.sync();return}
+  if(target.id==="cloudLogout"){cloud?.logout();return}
   if(target.id==="exportData"){exportBackup();return}
   if(target.id==="eraseData"){
     if(confirm("Προσοχή: διαγραφή ΟΛΩΝ των ημερολογιακών εγγραφών από αυτή τη συσκευή;")&&confirm("Τελική επιβεβαίωση: τα δεδομένα δεν θα μπορούν να ανακτηθούν χωρίς αντίγραφο.")){
@@ -408,7 +417,40 @@ $("menuButton").addEventListener("click",()=>{
 });
 $("drawerBackdrop").addEventListener("click",closeDrawer);
 $("topAction").addEventListener("click",()=>{selected=isoDate();calendarMonth=monthOf(selected);setPage(page==="reports"?"calendar":page)});
-load();render();
+// Existing plaintext storage is consulted only for one-time migration from
+// the original local-only app, and removed AFTER confirmed cloud upload.
+render();
+cloud=createCloud({
+  readState:()=>state,
+  applyState:raw=>{
+    const fresh=defaultData();
+    fresh.settings=normalizeSettings(raw.settings);
+    if(raw.sourceFpc?.format==="fpc-v18")fresh.sourceFpc=raw.sourceFpc;
+    const days=Object.entries(raw.days||{});
+    if(days.length>20000)throw Error("Υπερβολικά πολλές εγγραφές στη βάση.");
+    for(const [day,entry] of days)
+      if(validDate(day)&&entry&&typeof entry==="object")
+        fresh.days[day]=normalizeEntry(entry);
+    state=fresh;
+    render();
+  },
+  loadLegacy:()=>{
+    load();
+    return state;
+  },
+  onStatus:(msg,type)=>{
+    const banner=$("cloudSyncBanner");
+    banner.textContent=msg;
+    banner.classList.toggle("error",type==="error");
+    banner.classList.toggle("ok",type==="ok");
+    banner.hidden=false;
+  },
+  onReady:username=>{
+    if(!username){state=defaultData();render()}
+    else render();
+  }
+});
+cloud.mount();
 if("serviceWorker" in navigator&&location.protocol==="https:")
   navigator.serviceWorker.register("/sw.js").catch(()=>{});
 if("Notification" in window){setTimeout(checkReminders,2500);setInterval(checkReminders,60_000)}
