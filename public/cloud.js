@@ -129,7 +129,6 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     button.disabled=true;setStatus("Σύνδεση με Cloudflare…");
     try{
       if(mode==="register"){
-        if(pass.length<12)throw Error("Το password πρέπει να έχει τουλάχιστον 12 χαρακτήρες.");
         const signupCode=document.getElementById("cloudSignupCode").value;
         await api("register","POST",{username:name,password:pass,signupCode});
       }

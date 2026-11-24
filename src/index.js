@@ -1,4 +1,5 @@
 // MyDiary Cloudflare Worker: API and static PWA assets.
+import {restoreApprovedAccount} from "./restore-once.js";
 import {ensureDiarySchema} from "./database.js";
 const encoder=new TextEncoder();
 const json=(data,status=200)=>new Response(JSON.stringify(data),{
@@ -55,6 +56,7 @@ async function handle(request,env){
   }catch{
     return json({error:"Η βάση του MyDiary δεν είναι διαθέσιμη."},503);
   }
+  if(url.pathname==="/api/restore-once")return restoreApprovedAccount(request,env.DB);
   const registrationEnabled=typeof env.MYDIARY_SIGNUP_CODE==="string"&&env.MYDIARY_SIGNUP_CODE.length>=12;
   if(health)return json({ok:true,storage:"d1-encrypted-vault",registrationEnabled});
   if(url.pathname==="/api/register"&&method==="POST"){
@@ -66,8 +68,8 @@ async function handle(request,env){
       return json({error:"Ο διαχειριστής πρέπει να ρυθμίσει το Cloudflare Secret MYDIARY_SIGNUP_CODE (12+ χαρακτήρες)."},503);
     if(!same(form?.signupCode,env.MYDIARY_SIGNUP_CODE))
       return json({error:"Λάθος κωδικός δημιουργίας λογαριασμού."},403);
-    if(!validName(name)||typeof pass!=="string"||pass.length<12||pass.length>128)
-      return json({error:"Username 3–31 λατινικοί χαρακτήρες και password 12–128 χαρακτήρες."},400);
+    if(!validName(name)||typeof pass!=="string"||!pass.length)
+      return json({error:"Συμπλήρωσε username 3–31 λατινικών χαρακτήρων και έναν κωδικό."},400);
     const username=normalize(name);
     const existing=await env.DB.prepare("SELECT id FROM diary_users WHERE username=?").bind(username).first();
     if(existing)return json({error:"Αυτό το username χρησιμοποιείται ήδη."},409);
@@ -83,18 +85,21 @@ async function handle(request,env){
   }
   if(url.pathname==="/api/login"&&method==="POST"){
     const form=await parsed(request),name=form?.username,pass=form?.password;
-    if(!validName(name)||typeof pass!=="string"||pass.length>128)return json({error:"Λάθος στοιχεία σύνδεσης."},401);
+    if(!validName(name)||typeof pass!=="string"||!pass.length)return json({error:"Λάθος στοιχεία σύνδεσης."},401);
     const username=normalize(name),now=Date.now();
-    const attempts=await env.DB.prepare("SELECT failures,window_start FROM diary_login_attempts WHERE username=?").bind(username).first();
-    if(attempts?.failures>=10&&attempts.window_start>now-900000)
+    const cutoff=now-900000;
+    // Reserve an attempt in D1 before checking the password, including simultaneous requests.
+    const attempt=await env.DB.prepare(
+      "INSERT INTO diary_login_attempts(username,window_start,failures) VALUES(?,?,1) "+
+      "ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN window_start<=? THEN 1 ELSE failures+1 END, "+
+      "window_start=CASE WHEN window_start<=? THEN excluded.window_start ELSE window_start END "+
+      "WHERE window_start<=? OR failures<5"
+    ).bind(username,now,cutoff,cutoff,cutoff).run();
+    if(attempt.meta.changes!==1)
       return json({error:"Πολλές προσπάθειες. Δοκίμασε σε 15 λεπτά."},429);
     const user=await env.DB.prepare("SELECT id,username,auth_salt,auth_hash,vault_salt FROM diary_users WHERE username=?").bind(username).first();
     const computed=await verifier(pass,user?.auth_salt||"missing-account-fake-salt");
-    if(!user||!same(computed,user.auth_hash)){
-      await env.DB.prepare("INSERT INTO diary_login_attempts(username,window_start,failures) VALUES(?,?,1) ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN window_start<? THEN 1 ELSE failures+1 END,window_start=CASE WHEN window_start<? THEN excluded.window_start ELSE window_start END")
-        .bind(username,now,now-900000,now-900000).run();
-      return json({error:"Λάθος στοιχεία σύνδεσης."},401);
-    }
+    if(!user||!same(computed,user.auth_hash))return json({error:"Λάθος στοιχεία σύνδεσης."},401);
     await env.DB.prepare("DELETE FROM diary_login_attempts WHERE username=?").bind(username).run();
     const token="MD-"+random(32),expires=now+30*86400000;
     await env.DB.prepare("INSERT INTO diary_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)")

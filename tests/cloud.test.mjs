@@ -46,9 +46,10 @@ function mockDb(){
           }
           if(sql.startsWith("INSERT INTO diary_login_attempts")){
             const [name,now,deadline]=params,old=attempts.get(name);
+            if(old&&old.window_start>deadline&&old.failures>=5)return {meta:{changes:0}};
             attempts.set(name,{
-              window_start:old&&old.window_start>=deadline?old.window_start:now,
-              failures:old&&old.window_start>=deadline?old.failures+1:1
+              window_start:old&&old.window_start>deadline?old.window_start:now,
+              failures:old&&old.window_start>deadline?old.failures+1:1
             });
             return {meta:{changes:1}};
           }
@@ -146,4 +147,23 @@ test("health checks D1 again after an earlier successful request",async()=>{
   const unavailable=await fetchApi(env,"/api/health");
   assert.equal(unavailable.status,503);
   assert.equal(unavailable.data.ok,undefined);
+});
+
+test("invited users may choose any nonempty password including a PIN",async()=>{
+  const env={DB:mockDb(),MYDIARY_SIGNUP_CODE:"test-invitation-only"};
+  for(const [username,password] of [["shortuser","4815"],["singleuser","z"],["longuser","x".repeat(160)]]){
+    assert.equal((await fetchApi(env,"/api/register","POST",{username,password,signupCode:env.MYDIARY_SIGNUP_CODE})).status,201);
+    assert.equal((await fetchApi(env,"/api/login","POST",{username,password})).status,200);
+  }
+  assert.equal((await fetchApi(env,"/api/register","POST",{username:"emptyuser",password:"",signupCode:env.MYDIARY_SIGNUP_CODE})).status,400);
+});
+
+test("a login window limits guesses and allows login again after it expires",async()=>{
+  const db=mockDb(),env={DB:db,MYDIARY_SIGNUP_CODE:"test-invitation-only"};
+  const account={username:"testuser",password:"example"};
+  await fetchApi(env,"/api/register","POST",{...account,signupCode:env.MYDIARY_SIGNUP_CODE});
+  for(let i=0;i<5;i++)assert.equal((await fetchApi(env,"/api/login","POST",{...account,password:"incorrect"})).status,401);
+  assert.equal((await fetchApi(env,"/api/login","POST",account)).status,429);
+  db.attempts.get(account.username).window_start-=901000;
+  assert.equal((await fetchApi(env,"/api/login","POST",account)).status,200);
 });
