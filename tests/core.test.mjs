@@ -60,3 +60,47 @@ test("input sanitation and calendar ranges",()=>{
   assert.equal(e.temperature,"37.1");
   assert.equal(e.weight,"63.5");
 });
+test("a historical period still forecasts a date near today",()=>{
+  data.clear();
+  const app=boot();
+  app.state.days["2017-01-01"]=app.normalizeEntry({period:true});
+  const predicted=app.predictions();
+  const today=new Date();
+  const forecast=new Date(predicted.period+"T12:00:00");
+  const gap=Math.round((forecast-today)/86400000);
+  assert(gap>=-app.cycleStats().periodLength-1);
+  assert(gap<=app.cycleStats().cycle);
+});
+test("batch period markers preserve existing symptoms and notes",()=>{
+  data.clear();
+  const controls={
+    entryDate:{value:"2026-11-01"},entryPeriod:{checked:true},
+    entryPeriodRange:{checked:true},entryFlow:{value:"μέτρια"},
+    entryWeight:{value:""},entryTemp:{value:""},entrySleep:{value:""},
+    entryWater:{value:"1"},entryIntimacy:{checked:false},
+    entryOvulation:{checked:false},entryBreast:{checked:false},
+    entryNotes:{value:"First day"}
+  };
+  const docLocal={
+    ...doc,
+    getElementById(id){return id==="main"?doc.main:controls[id]||(controls[id]={textContent:"",hidden:false})}
+  };
+  const app=new Function("document","localStorage","window","Notification",
+    "sessionStorage","setTimeout","clearTimeout",
+    beforeEvents+"\nreturn {getState:()=>state,saveEntry,normalizeEntry,normalizeSettings};"
+  )(docLocal,storage,{scrollTo(){}},{permission:"default"},{},()=>0,()=>{});
+  app.getState().settings.periodLength=5;
+  app.getState().days["2026-11-03"]=app.normalizeEntry({
+    symptoms:["Κράμπες"],notes:"Existing note"
+  });
+  app.saveEntry();
+  for(let i=1;i<=5;i++)
+    assert.equal(app.getState().days["2026-11-0"+i].period,true);
+  assert.equal(app.getState().days["2026-11-03"].notes,"Existing note");
+  assert.deepEqual(app.getState().days["2026-11-03"].symptoms,["Κράμπες"]);
+  assert.equal(app.getState().days["2026-11-01"].notes,"First day");
+  const normalized=app.normalizeSettings({remindWaterHour:'onfocus="alert(1)',cycleLength:28.9,periodLength:42});
+  assert.equal(normalized.remindWaterHour,12);
+  assert.equal(normalized.cycleLength,29);
+  assert.equal(normalized.periodLength,12);
+});
