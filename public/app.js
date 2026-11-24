@@ -245,6 +245,7 @@ function renderSettings(){
    '<button class="btn full" id="saveSettings" style="margin-top:15px">Αποθήκευση ρυθμίσεων</button></div>'+
    '<div class="card"><h2>Online λογαριασμός</h2><p class="hint">Συνδεδεμένος: '+escapeHtml(cloud?.username||"")+'. Το ημερολόγιο συγχρονίζεται κρυπτογραφημένο μέσω Cloudflare D1.</p>'+
    '<button type="button" class="btn sec full" id="cloudSyncNow">Έλεγχος συγχρονισμού</button>'+
+   '<button type="button" class="btn ghost full" id="cloudPendingDownload" style="margin-top:9px">Εξαγωγή εκκρεμών αλλαγών</button>'+
    '<button type="button" class="btn ghost full" id="cloudLogout" style="margin-top:9px">Αποσύνδεση</button></div>'+
    '<div class="card"><h2>Τα δεδομένα σου</h2><p class="hint">Κράτησε αντίγραφο αν αλλάξεις κινητό ή καθαρίσεις τα δεδομένα browser.</p>'+
    '<button class="btn sec full" id="exportData">↓ Εξαγωγή αντιγράφου JSON</button>'+
@@ -386,6 +387,7 @@ document.addEventListener("click",event=>{
     save();toast("Οι ρυθμίσεις αποθηκεύτηκαν.");render();return;
   }
   if(target.id==="cloudSyncNow"){cloud?.sync();return}
+  if(target.id==="cloudPendingDownload"){cloud?.downloadPending();return}
   if(target.id==="cloudLogout"){cloud?.logout();return}
   if(target.id==="exportData"){exportBackup();return}
   if(target.id==="eraseData"){
