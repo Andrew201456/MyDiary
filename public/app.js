@@ -1,5 +1,6 @@
 import {convertFpc,restoreArchivedWater,normalizeFpcWeights} from "./fpc-import.js";
 import {createCloud} from "./cloud.js";
+import {MEAL_TYPES,normalizeFood,foodSummary} from "./food.js";
 "use strict";
 const STORAGE="mydiary-local-v1";
 const DEFAULTS={cycleLength:29,periodLength:5,remindPeriod:true,remindWater:false,remindWaterHour:12,theme:"pastel"};
@@ -61,7 +62,7 @@ function normalizeEntry(input){
     intimacy:entry.intimacy===true,ovulation:entry.ovulation===true,
     sleep:entry.sleep===""?"":Number.isFinite(Number(entry.sleep))&&Number(entry.sleep)>=0&&Number(entry.sleep)<=24?String(entry.sleep):"",
     water:Number.isFinite(Number(entry.water))?Math.max(0,Math.min(30,Math.round(Number(entry.water)))):0,
-    breast:entry.breast===true,notes:String(entry.notes||"").slice(0,2000)
+    breast:entry.breast===true,notes:String(entry.notes||"").slice(0,2000),food:normalizeFood(entry.food)
   };
 }
 function save(){
@@ -111,12 +112,15 @@ function isPredictedPeriod(day,p){
   return false;
 }
 let page="today",selected=isoDate(),calendarMonth=monthOf(isoDate()),reportDetail="";
+let foodDay=isoDate(),foodEdit="";
 const main=$("main");
 function toast(message){
   const box=$("toast");box.textContent=message;box.hidden=false;
   clearTimeout(toast.timer);toast.timer=setTimeout(()=>box.hidden=true,3200);
 }
 function setPage(next){
+  if(next==="food"&&page==="food")return;
+  if(next==="food"){foodDay=isoDate();foodEdit="";}
   if(next==="add")selected=validDate(selected)?selected:isoDate();
   page=next;reportDetail="";render();window.scrollTo({top:0,behavior:"instant"});
 }
@@ -124,7 +128,7 @@ function closeDrawer(){
   $("drawer").classList.remove("open");$("drawerBackdrop").hidden=true;$("drawer").setAttribute("aria-hidden","true");$("menuButton").setAttribute("aria-expanded","false");
 }
 function render(){
-  const titles={today:"Σήμερα",calendar:"Ημερολόγιο",add:"Καταχώρηση",reminders:"Υπενθυμίσεις",reports:"Αναφορές",settings:"Ρυθμίσεις"};
+  const titles={today:"Σήμερα",calendar:"Ημερολόγιο",add:"Καταχώρηση",reminders:"Υπενθυμίσεις",reports:"Αναφορές",settings:"Ρυθμίσεις",food:"Τι τρώω"};
   $("pageTitle").textContent=titles[page]||"MyDiary";
   $("topAction").hidden=page==="settings"||page==="add";
   document.querySelectorAll("[data-nav]").forEach(button=>{
@@ -139,9 +143,10 @@ function render(){
   else if(page==="reminders")renderReminders();
   else if(page==="reports")renderReports();
   else if(page==="settings")renderSettings();
+  else if(page==="food")renderFood();
 }
 function recentRecords(){
-  return entries().filter(([,e])=>e.period||e.notes||e.symptoms.length||e.mood||e.weight||e.temperature||e.intimacy||e.ovulation||e.sleep||e.water||e.breast).reverse();
+  return entries().filter(([,e])=>e.period||e.notes||e.symptoms.length||e.mood||e.weight||e.temperature||e.intimacy||e.ovulation||e.sleep||e.water||e.breast||e.food?.length).reverse();
 }
 const weekdays=["Δευ","Τρ","Τετ","Πεμ","Παρ","Σαβ","Κυρ"];
 function dailyDetails(e){
@@ -150,7 +155,7 @@ function dailyDetails(e){
     e.period&&"Περίοδος",e.mood,...e.symptoms,e.weight&&formatWeight(e.weight),
     e.temperature&&e.temperature+" °C",e.sleep&&e.sleep+" ώρες ύπνου",
     e.water&&e.water+" ποτήρια νερό",e.intimacy&&"Σεξουαλική επαφή",
-    e.ovulation&&"Θετικό τεστ ωορρηξίας",e.breast&&"Αυτοεξέταση μαστού",e.notes
+    e.ovulation&&"Θετικό τεστ ωορρηξίας",e.breast&&"Αυτοεξέταση μαστού",e.food?.length&&"🍽 "+e.food.length+" καταχωρήσεις φαγητού",e.notes
   ].filter(Boolean);
 }
 function renderToday(){
@@ -170,12 +175,14 @@ function renderToday(){
     return '<button type="button" class="week-day'+(recorded?' recorded':'')+'" data-calendar-date="'+day+'" '+
       (active?'aria-current="date" ':'')+'aria-label="'+dateLabel(day)+(recorded?', περίοδος':'')+'"><span>'+name+'</span><b>'+Number(day.slice(8))+'</b></button>';
   }).join("");
+  const food=foodSummary(state.days[today]?.food);
   const longDate=parseDay(today).toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"});
   main.innerHTML='<div class="today-layout"><section class="today-overview">'+
     '<div class="hero"><small>Επόμενη περίοδος</small><h2>'+headline+'</h2><p>'+subtitle+'</p>'+
     '<button class="btn" data-edit="'+today+'">＋ Καταχώρηση για σήμερα</button>'+postscript+'</div>'+
     '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+' <small>ημέρες</small></strong></div>'+
     '<div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.periodLength+' <small>ημέρες</small></strong></div></div>'+
+    '<button type="button" class="food-shortcut" data-food-date="'+today+'"><span class="food-symbol" aria-hidden="true">🍽</span><span><strong>Τι τρώω σήμερα</strong><small>'+food.count+' καταχωρήσεις'+(food.known?' · '+food.total.toLocaleString("el-GR")+' kcal':'')+'</small></span><span aria-hidden="true">›</span></button>'+
     '</section><section class="today-diary"><div class="week-card"><div class="section-title"><h2>Η εβδομάδα μου</h2>'+
     '<button class="text-action" data-calendar-date="'+today+'">Ημερολόγιο ›</button></div><div class="week-strip">'+week+'</div>'+
     '<div class="week-note"><strong>'+escapeHtml(longDate)+'</strong><p>'+escapeHtml(logged.join(" · ")||"Δεν υπάρχει καταχώρηση για σήμερα.")+'</p></div></div>'+
@@ -205,7 +212,7 @@ function renderCalendar(){
     '<div class="weekday-row">'+weekdays.map(d=>"<span>"+d+"</span>").join("")+'</div>'+
     '<div class="calendar-grid">'+days.join("")+'</div>'+
     '<div class="legend"><span style="--swatch:#efc4d4">Περίοδος</span><span style="--swatch:#eebcce">Πρόβλεψη</span><span style="--swatch:#aa9bc1">Γόνιμο διάστημα</span></div></div>'+
-    '<div class="day-summary"><strong>'+escapeHtml(dateLabel(selected))+'</strong><p>'+escapeHtml(selectedBits.join(" · ")||"Δεν υπάρχουν καταχωρήσεις.")+'</p><button class="btn mini" style="margin-top:12px" data-go="add">+ Καταχώρηση</button></div>'+
+    '<div class="day-summary"><strong>'+escapeHtml(dateLabel(selected))+'</strong><p>'+escapeHtml(selectedBits.join(" · ")||"Δεν υπάρχουν καταχωρήσεις.")+'</p><button class="btn mini" style="margin-top:12px" data-go="add">+ Καταχώρηση</button> <button class="btn sec mini" type="button" data-food-date="'+selected+'">Τι τρώω</button></div>'+
     '<p class="hint">Οι πιθανές γόνιμες ημέρες υπολογίζονται προσεγγιστικά και δεν πρέπει να χρησιμοποιούνται για αντισύλληψη.</p>';
 }
 function renderAdd(){
@@ -225,6 +232,63 @@ function renderAdd(){
     (state.days[selected]?'<button type="button" id="deleteEntry" class="btn danger full" style="margin-top:10px">Διαγραφή καταχώρησης</button>':'')+
     '<p class="hint">Οι καταχωρήσεις σου συγχρονίζονται κρυπτογραφημένες.</p></form>';
   if(e.mood)main.dataset.mood=e.mood;else delete main.dataset.mood;
+}
+function renderFood(){
+  const food=normalizeFood(state.days[foodDay]?.food), summary=foodSummary(food);
+  const edit=food.find(item=>item.id===foodEdit);
+  if(!edit)foodEdit="";
+  const heading=foodDay===isoDate()?"Σήμερα":dateLabel(foodDay);
+  const countText=summary.count===1?"1 καταχώρηση":summary.count+" καταχωρήσεις";
+  const groups=MEAL_TYPES.map(meal=>{
+    const rows=food.filter(item=>item.meal===meal);
+    if(!rows.length)return "";
+    return '<section class="food-group"><h3>'+escapeHtml(meal)+'</h3>'+rows.map(item=>
+      '<article class="food-row"><div><strong>'+escapeHtml(item.name)+'</strong><small>'+
+      (item.calories===null?'Χωρίς θερμίδες':item.calories.toLocaleString("el-GR")+' kcal')+
+      '</small></div><button type="button" class="text-action" data-food-edit="'+escapeHtml(item.id)+'">Επεξ.</button>'+
+      '<button type="button" class="food-delete" data-food-delete="'+escapeHtml(item.id)+'" aria-label="Διαγραφή '+escapeHtml(item.name)+'">×</button></article>'
+    ).join("")+'</section>';
+  }).join("");
+  main.innerHTML='<div class="food-page"><section class="soft-card food-day-card"><div class="eyebrow">ΗΜΕΡΟΛΟΓΙΟ ΦΑΓΗΤΟΥ</div>'+
+    '<div class="food-date-nav"><button class="icon-btn" type="button" data-food-shift="-1" aria-label="Προηγούμενη ημέρα">‹</button>'+
+    '<label><strong>'+escapeHtml(heading)+'</strong><input class="form-control" id="foodDate" type="date" aria-label="Ημερομηνία φαγητού" value="'+escapeHtml(foodDay)+'"></label>'+
+    '<button class="icon-btn" type="button" data-food-shift="1" aria-label="Επόμενη ημέρα">›</button></div>'+
+    '<div class="food-total"><span>Καταγεγραμμένες θερμίδες</span><strong>'+(summary.known?summary.total.toLocaleString("el-GR")+' <small>kcal</small>':'—')+'</strong><small>'+countText+(summary.known<summary.count?' · '+(summary.count-summary.known)+' χωρίς θερμίδες':'')+'</small></div></section>'+
+    '<form id="foodForm" class="card"><h2>'+(edit?'Επεξεργασία γεύματος':'＋ Προσθήκη φαγητού')+'</h2>'+
+    '<label class="entry-label" for="foodName">Τι έφαγες;</label><input id="foodName" class="form-control" type="text" required maxlength="300" placeholder="π.χ. Τοστ με τυρί" value="'+escapeHtml(edit?.name||"")+'">'+
+    '<div class="form-grid"><div><label class="entry-label" for="foodMeal">Γεύμα</label><select id="foodMeal" class="form-control">'+MEAL_TYPES.map(meal=>'<option '+(meal===(edit?.meal||"Άλλο")?'selected':'')+'>'+escapeHtml(meal)+'</option>').join("")+'</select></div>'+
+    '<div><label class="entry-label" for="foodCalories">Θερμίδες (προαιρετικά)</label><input id="foodCalories" class="form-control" type="number" min="0" max="100000" step="1" inputmode="numeric" placeholder="kcal" value="'+escapeHtml(edit?.calories??"")+'"></div></div>'+
+    '<div class="food-form-actions"><button type="submit" class="btn full">'+(edit?'Αποθήκευση αλλαγών':'Προσθήκη')+'</button>'+(edit?'<button type="button" class="btn sec" id="foodCancel">Άκυρο</button>':'')+'</div></form>'+
+    '<div class="section-title"><h2>Τι έφαγα</h2><button type="button" class="text-action" data-food-date="'+isoDate()+'">Σήμερα</button></div>'+
+    (groups||'<div class="card empty">Δεν έχεις καταχωρήσει φαγητό για αυτή την ημέρα.</div>')+'</div>';
+}
+function foodDraft(){
+  return page==="food"&&(!!foodEdit||!!$("foodName")?.value.trim()||!!$("foodCalories")?.value);
+}
+function openFood(day){
+  if(!validDate(day))return;
+  if(foodDraft()&&!confirm("Να φύγεις χωρίς να αποθηκεύσεις το γεύμα;"))return;
+  foodDay=day;foodEdit="";page="food";reportDetail="";render();
+}
+function commitFood(items){
+  if(!cloud?.ready){toast("Συνδέσου για αποθήκευση.");return false;}
+  const previous=state.days[foodDay];
+  state.days[foodDay]={...normalizeEntry(previous||{}),food:normalizeFood(items)};
+  if(!save()){
+    if(previous)state.days[foodDay]=previous;else delete state.days[foodDay];
+    return false;
+  }
+  foodEdit="";renderFood();return true;
+}
+function saveFood(){
+  const name=$("foodName").value.trim(), raw=$("foodCalories").value;
+  if(!name){toast("Γράψε τι έφαγες.");return;}
+  const items=normalizeFood(state.days[foodDay]?.food);
+  const item={id:foodEdit||crypto.randomUUID(),name,meal:$("foodMeal").value,
+    calories:raw===""?null:Number(raw)};
+  if(raw!==""&&(!Number.isInteger(item.calories)||item.calories<0||item.calories>100000)){toast("Βάλε έγκυρο αριθμό θερμίδων.");return;}
+  const next=foodEdit?items.map(row=>row.id===foodEdit?item:row):[...items,item];
+  if(commitFood(next))toast("Το γεύμα καταχωρήθηκε.");
 }
 function renderReminders(){
   const p=predictions(),next=p.period?dateLabel(p.period):"Δεν έχει καταχωρηθεί περίοδος";
@@ -285,7 +349,7 @@ function saveEntry(){
     mood:main.dataset.mood||"",weight:$("entryWeight").value,temperature:$("entryTemp").value,
     sleep:$("entrySleep").value,water:$("entryWater").value,
     intimacy:$("entryIntimacy").checked,ovulation:$("entryOvulation").checked,
-    breast:$("entryBreast").checked,notes:$("entryNotes").value
+    breast:$("entryBreast").checked,notes:$("entryNotes").value,food:state.days[day]?.food
   });
   const range=$("entryPeriodRange").checked;
   if(range&&!entry.period){toast("Επίλεξε πρώτα «Περίοδος» για πολλές ημέρες.");return}
@@ -400,9 +464,22 @@ function checkReminders(){
 }
 document.addEventListener("click",event=>{
   const target=event.target.closest("button");if(!target)return;
-  if(target.dataset.nav){setPage(target.dataset.nav);return}
-  if(target.dataset.go){setPage(target.dataset.go);return}
-  if(target.dataset.drawer){closeDrawer();setPage(target.dataset.drawer);return}
+  if(target.dataset.foodDate){openFood(target.dataset.foodDate);return}
+  if(target.dataset.foodShift){openFood(addDays(foodDay,Number(target.dataset.foodShift)));return}
+  if(target.dataset.foodEdit){
+    if(foodDraft()&&!confirm("Να φύγεις χωρίς να αποθηκεύσεις το γεύμα;"))return;
+    foodEdit=target.dataset.foodEdit;renderFood();$("foodName")?.focus();return;
+  }
+  if(target.dataset.foodDelete){
+    if(foodDraft()&&!confirm("Να απορριφθεί το μη αποθηκευμένο γεύμα;"))return;
+    if(confirm("Να διαγραφεί αυτή η καταχώρηση φαγητού;"))
+      commitFood(normalizeFood(state.days[foodDay]?.food).filter(item=>item.id!==target.dataset.foodDelete));
+    return;
+  }
+  if(target.id==="foodCancel"){foodEdit="";renderFood();return;}
+  if(target.dataset.nav){if(target.dataset.nav!=="food"&&foodDraft()&&!confirm("Να φύγεις χωρίς να αποθηκεύσεις το γεύμα;"))return;setPage(target.dataset.nav);return}
+  if(target.dataset.go){if(foodDraft()&&!confirm("Να φύγεις χωρίς να αποθηκεύσεις το γεύμα;"))return;setPage(target.dataset.go);return}
+  if(target.dataset.drawer){if(foodDraft()&&!confirm("Να φύγεις χωρίς να αποθηκεύσεις το γεύμα;"))return;closeDrawer();setPage(target.dataset.drawer);return}
   if(target.dataset.calendarDate){
     selected=target.dataset.calendarDate;calendarMonth=monthOf(selected);setPage("calendar");return;
   }
@@ -423,7 +500,10 @@ document.addEventListener("click",event=>{
   if(target.dataset.symptom){target.classList.toggle("selected");return}
   if(target.id==="deleteEntry"){
     if(confirm("Να διαγραφεί η καταχώρηση της "+dateLabel(selected)+";")){
-      delete state.days[selected];save();toast("Η καταχώρηση διαγράφηκε.");setPage("calendar");
+      const previous=state.days[selected], food=normalizeFood(previous?.food);
+      if(food.length)state.days[selected]=normalizeEntry({food});else delete state.days[selected];
+      if(!save()){if(previous)state.days[selected]=previous;return;}
+      toast(food.length?"Η καταχώρηση διαγράφηκε. Το φαγητό διατηρήθηκε.":"Η καταχώρηση διαγράφηκε.");setPage("calendar");
     }return;
   }
   if(target.id==="saveSettings"){
@@ -447,9 +527,11 @@ document.addEventListener("click",event=>{
 });
 document.addEventListener("submit",event=>{
   if(event.target.id==="entryForm"){event.preventDefault();saveEntry()}
+  if(event.target.id==="foodForm"){event.preventDefault();saveFood()}
 });
 document.addEventListener("change",event=>{
   const t=event.target;
+  if(t.id==="foodDate"){openFood(t.value);if($("foodDate"))$("foodDate").value=foodDay;return;}
   if(t.id==="entryDate"&&validDate(t.value)){selected=t.value;renderAdd()}
   if(t.id==="remindPeriod"){state.settings.remindPeriod=t.checked;save()}
   if(t.id==="remindWater"){state.settings.remindWater=t.checked;save()}
@@ -463,13 +545,13 @@ $("menuButton").addEventListener("click",()=>{
   $("menuButton").setAttribute("aria-expanded",String(open));
 });
 $("drawerBackdrop").addEventListener("click",closeDrawer);
-$("topAction").addEventListener("click",()=>{selected=isoDate();calendarMonth=monthOf(selected);setPage(page==="reports"?"calendar":page)});
+$("topAction").addEventListener("click",()=>{if(page==="food"){openFood(isoDate());return;}selected=isoDate();calendarMonth=monthOf(selected);setPage(page==="reports"?"calendar":page)});
 // Existing plaintext storage is consulted only for one-time migration from
 // the original local-only app, and removed AFTER confirmed cloud upload.
 render();
 let statusTimer;
 cloud=createCloud({
-  canRefresh:()=>page!=="add"&&page!=="settings",
+  canRefresh:()=>page!=="add"&&page!=="settings"&&!foodDraft(),
   readState:()=>state,
   applyState:raw=>{
     const fresh=defaultData();
