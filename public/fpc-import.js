@@ -116,6 +116,47 @@ function waterCups(value){
   return Number.isInteger(count)&&count>=0&&count<=30?count:0;
 }
 
+const KG_PER_LB=0.45359237;
+
+function resemblesConvertedKilograms(weights){
+  // Some FPC archives store metric input (0.05 kg increments) as pounds
+  // rounded to two decimals. Require a series of exact round trips and
+  // several values off the metric grid. Magnitude alone says nothing.
+  const distinct=[...new Set(weights)];
+  const offGrid=distinct.filter(n=>Math.abs(n*20-Math.round(n*20))>0.001);
+  return offGrid.length>=6&&distinct.every(lb=>{
+    const kg=Math.round(lb*KG_PER_LB*20)/20;
+    return Number((kg/KG_PER_LB).toFixed(2))===lb;
+  });
+}
+
+export function normalizeFpcWeights(data,unit="auto"){
+  const archive=data?.sourceFpc;
+  if(archive?.format!=="fpc-v18"||archive.weightsNormalized||!data.days||
+      !Array.isArray(archive.dailyRecords))return false;
+  const rows=archive.dailyRecords.filter(row=>{
+    const n=Number(row?.weight);
+    return Number.isFinite(n)&&n>0&&n<500;
+  });
+  if(!rows.length)return false;
+  if(unit==="auto"){
+    if(!resemblesConvertedKilograms(rows.map(row=>Number(row.weight))))return false;
+    unit="lb";
+  }
+  if(unit!=="lb"&&unit!=="kg")return false;
+  if(unit==="lb"){
+    for(const row of rows){
+      const day=Object.hasOwn(data.days,row.date)?data.days[row.date]:null;
+      // Only repair unchanged imported weights. Keep edits, deletions,
+      // other fields and the original archive intact.
+      if(day&&Number(day.weight)===Number(row.weight))
+        day.weight=String(Number((Number(row.weight)*KG_PER_LB).toFixed(2)));
+    }
+  }
+  archive.weightsNormalized=true;
+  return true;
+}
+
 // Older FPC-to-JSON exports kept cup events in the archive but displayed zero.
 export function restoreArchivedWater(backup){
   if(backup?.importInfo?.source!=="Period Calendar FPC")return;
@@ -135,7 +176,7 @@ export function restoreArchivedWater(backup){
  * the supplied sample are interpreted as *estimated* durations; raw signs
  * are retained as provenance, never silently treated as confirmed.
  */
-export async function convertFpc(buffer){
+export async function convertFpc(buffer,weightUnit="auto"){
   const entries=await unzipSelected(extractJavaBlocks(buffer),
     new Set(["1.period","1.note"])); // Do NOT read "1.user" (old password).
   const periods=decodeFpc(entries.get("1.period"));
@@ -173,7 +214,7 @@ export async function convertFpc(buffer){
     const {uid,date,db_date,editTime,...archive}=row;
     dailyRecords.push({date:day,...archive});
   }
-  return {
+  const backup={
     app:"MyDiary",version:2,
     importInfo:{
       source:"Period Calendar FPC",periodRecords:periodRecords.length,
@@ -188,4 +229,6 @@ export async function convertFpc(buffer){
       sourceFpc:{format:"fpc-v18",periodRecords,dailyRecords}
     }
   };
+  normalizeFpcWeights(backup.data,weightUnit);
+  return backup;
 }

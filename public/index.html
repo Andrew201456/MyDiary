@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#ff5e99">
+  <meta name="theme-color" content="#78334d">
   <meta name="description" content="Το προσωπικό σου ημερολόγιο κύκλου και ευεξίας">
   <title>MyDiary</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -17,41 +17,38 @@
 <body class="cloud-locked">
 <section id="cloudLogin" class="cloud-login-screen" aria-label="Σύνδεση MyDiary">
   <div class="cloud-login-card">
-    <img src="/icon-192.png" alt="" width="70" height="70">
-    <div class="cloud-login-brand">MyDiary</div>
-    <h2>Καλώς ήρθες 🌸</h2>
-    <p>Το προσωπικό σου ημερολόγιο, ασφαλές στο Cloudflare.</p>
+    <div class="login-lockup"><img src="/icon.svg" alt="" width="46" height="46"><h1>MyDiary</h1></div>
+    <h2 id="loginTitle">Σύνδεση</h2>
+    <p>Το προσωπικό σου ημερολόγιο κύκλου.</p>
     <form id="cloudForm">
-      <label for="cloudMode">Επιλογή</label>
-      <select id="cloudMode" required><option value="login">Σύνδεση</option><option value="register">Νέος λογαριασμός</option></select>
-      <label for="cloudUsername">Username</label>
-      <input id="cloudUsername" type="text" autocomplete="username" minlength="3" maxlength="31" pattern="[a-zA-Z][a-zA-Z0-9._-]{2,30}" required placeholder="π.χ. mydiary">
+      <label for="cloudUsername">Όνομα χρήστη</label>
+      <input id="cloudUsername" type="text" autocomplete="username" minlength="3" maxlength="31" pattern="[a-zA-Z][a-zA-Z0-9._\-]{2,30}" autocapitalize="none" spellcheck="false" required placeholder="π.χ. mydiary">
       <div id="cloudSignupWrap" hidden>
         <label for="cloudSignupCode">Κωδικός νέου λογαριασμού</label>
         <input id="cloudSignupCode" type="password" autocomplete="off" placeholder="Από τον διαχειριστή">
       </div>
-      <label for="cloudPassword">Password</label>
+      <label for="cloudPassword">Κωδικός πρόσβασης</label>
       <input id="cloudPassword" type="password" autocomplete="current-password" required placeholder="Ο προσωπικός σου κωδικός">
       <button id="cloudSubmit" type="submit">Σύνδεση</button>
     </form>
     <p id="cloudMessage" role="status" aria-live="polite"></p>
-    <small>Κρυπτογράφηση στη συσκευή · Τα στοιχεία σου δεν αποθηκεύονται αναγνώσιμα στη βάση.</small>
+    <button id="cloudMode" type="button" class="login-switch" value="login">Δημιουργία λογαριασμού</button>
   </div>
 </section>
 <div id="cloudSyncBanner" class="cloud-sync-banner" role="status" aria-live="polite" hidden></div>
 <div id="app">
   <header class="topbar">
     <button type="button" class="icon-btn hamburger" id="menuButton" aria-label="Μενού" aria-expanded="false"><span></span><span></span><span></span></button>
-    <h1 id="pageTitle">Σήμερα</h1>
+    <div class="page-heading"><span>MyDiary</span><h1 id="pageTitle">Σήμερα</h1></div>
     <button type="button" class="icon-btn top-action" id="topAction" aria-label="Μετάβαση στο σήμερα"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="m9 15 2 2 4-4"/></svg></button>
   </header>
   <main id="main" tabindex="-1"></main>
   <nav class="bottom-nav" aria-label="Κύρια πλοήγηση">
-    <button data-nav="today" type="button"><span class="nav-icon">✿</span><span>Σήμερα</span></button>
-    <button data-nav="calendar" type="button"><span class="nav-icon">▦</span><span>Ημερολόγιο</span></button>
-    <button data-nav="add" type="button" class="nav-add" aria-label="Προσθήκη καταχώρησης"><span>+</span></button>
-    <button data-nav="reminders" type="button"><span class="nav-icon">♧</span><span>Υπενθυμίσεις</span></button>
-    <button data-nav="reports" type="button"><span class="nav-icon">▥</span><span>Αναφορά</span></button>
+    <button data-nav="today" type="button"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5m-11 11L5 19"/></svg><span>Σήμερα</span></button>
+    <button data-nav="calendar" type="button"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="3"/><path d="M8 3v4m8-4v4M4 10h16"/></svg><span>Ημερολόγιο</span></button>
+    <button data-nav="add" type="button" class="nav-add" aria-label="Προσθήκη καταχώρησης"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button data-nav="reminders" type="button"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 6-2 7-2 8h16c0-1-2-2-2-8ZM10 20a2.5 2.5 0 0 0 4 0"/></svg><span>Υπενθυμίσεις</span></button>
+    <button data-nav="reports" type="button"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16M8 15v-3m5 3V7m5 8v-5"/></svg><span>Αναφορές</span></button>
   </nav>
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
@@ -62,7 +59,7 @@
     <button data-drawer="reports">▥ Αναφορές</button>
     <button data-drawer="reminders">♧ Υπενθυμίσεις</button>
     <button data-drawer="settings">⚙ Ρυθμίσεις και αντίγραφα</button>
-    <p class="drawer-note">Ιδιωτικό • Χωρίς διαφημίσεις • Τα δεδομένα μένουν στη συσκευή</p>
+    <p class="drawer-note">Κρυπτογραφημένος συγχρονισμός μεταξύ συσκευών</p>
   </aside>
 </div>
 </body>

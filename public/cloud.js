@@ -80,7 +80,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
           // Upload was interrupted before a confirmed server response.
           // Continue from this encrypted, locally retained snapshot.
           applyState(backup);
-          pending=backup;
+          pending=readState();
           setStatus("Ανακτήθηκαν εκκρεμείς αλλαγές. Συγχρονισμός…");
           return;
         }
@@ -93,7 +93,8 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     }
     if(remote.ciphertext){
       const result=await decrypt(key,remote.ciphertext);
-      applyState(result);
+      const migrated=applyState(result);
+      if(migrated&&!cacheWarning)pending=readState();
       // An old plaintext local diary is never auto-applied over a cloud
       // snapshot. The user can explicitly import their JSON backup.
       if(localStorage.getItem("mydiary-local-v1"))
@@ -101,7 +102,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     }else{
       const old=loadLegacy();
       applyState(old);
-      pending=old;
+      pending=readState();
     }
   };
   async function enter(name,password){
@@ -192,14 +193,18 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
       if(scheduled)clearTimeout(scheduled);
       scheduled=null;flush();return;
     }
+    const currentRevision=revision,currentToken=token;
     try{
       const remote=await api("vault","GET",undefined,token);
+      if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
       if(remote.revision===revision){
         setStatus("Το Cloudflare είναι ενημερωμένο ✓","ok");
       }else if(remote.revision>revision&&remote.ciphertext){
         const snapshot=await decrypt(key,remote.ciphertext);
-        applyState(snapshot);
+        if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
+        const migrated=applyState(snapshot);
         revision=remote.revision;
+        if(migrated&&!cacheWarning)queueSave(readState());
         setStatus("Φορτώθηκαν οι νεότερες εγγραφές από το Cloudflare ✓","ok");
       }else{
         setStatus("Ασυμφωνία cloud revision. Δεν άλλαξα κανένα δεδομένο.","error");
@@ -237,8 +242,18 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     gate.hidden=false;
     document.body.classList.add("cloud-locked");
     document.getElementById("cloudForm").addEventListener("submit",submit);
-    document.getElementById("cloudMode").addEventListener("change",event=>{
-      const isNew=event.target.value==="register";
+    const modeButton=document.getElementById("cloudMode");
+    modeButton.addEventListener("click",()=>{
+      modeButton.value=modeButton.value==="login"?"register":"login";
+      modeButton.dispatchEvent(new Event("change"));
+    });
+    modeButton.addEventListener("change",()=>{
+      const isNew=modeButton.value==="register";
+      modeButton.textContent=isNew?"Επιστροφή στη σύνδεση":"Δημιουργία λογαριασμού";
+      document.getElementById("loginTitle").textContent=isNew?"Νέος λογαριασμός":"Σύνδεση";
+      document.getElementById("cloudPassword").autocomplete=isNew?"new-password":"current-password";
+      document.getElementById("cloudSignupCode").required=isNew;
+      notice.textContent="";
       document.getElementById("cloudSignupWrap").hidden=!isNew;
       document.getElementById("cloudSubmit").textContent=
         isNew?"Δημιουργία λογαριασμού":"Σύνδεση";

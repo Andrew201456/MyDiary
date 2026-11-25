@@ -1,4 +1,4 @@
-import {convertFpc,restoreArchivedWater} from "./fpc-import.js";
+import {convertFpc,restoreArchivedWater,normalizeFpcWeights} from "./fpc-import.js";
 import {createCloud} from "./cloud.js";
 "use strict";
 const STORAGE="mydiary-local-v1";
@@ -14,6 +14,7 @@ const REPORTS=[
 ];
 const $=id=>document.getElementById(id);
 const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const formatWeight=value=>Number(value).toLocaleString("el-GR",{maximumFractionDigits:2})+" kg";
 const int=(value,fallback)=>{const n=Number(value);return Number.isFinite(n)?n:fallback};
 const isoDate=(d=new Date())=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
 const parseDay=iso=>new Date(String(iso)+"T12:00:00");
@@ -123,10 +124,15 @@ function closeDrawer(){
   $("drawer").classList.remove("open");$("drawerBackdrop").hidden=true;$("drawer").setAttribute("aria-hidden","true");$("menuButton").setAttribute("aria-expanded","false");
 }
 function render(){
-  const titles={today:"Σήμερα",calendar:monthLabel(calendarMonth.year,calendarMonth.month).replace(/\s+\d{4}$/,""),add:"Καταχώρηση",reminders:"Υπενθυμίσεις",reports:reportDetail?"Αναφορά":"Αναφορά",settings:"Ρυθμίσεις"};
+  const titles={today:"Σήμερα",calendar:"Ημερολόγιο",add:"Καταχώρηση",reminders:"Υπενθυμίσεις",reports:"Αναφορές",settings:"Ρυθμίσεις"};
   $("pageTitle").textContent=titles[page]||"MyDiary";
   $("topAction").hidden=page==="settings"||page==="add";
-  document.querySelectorAll("[data-nav]").forEach(b=>b.classList.toggle("active",b.dataset.nav===page));
+  document.querySelectorAll("[data-nav]").forEach(button=>{
+    const active=button.dataset.nav===page;
+    button.classList.toggle("active",active);
+    if(active)button.setAttribute("aria-current","page");
+    else button.removeAttribute("aria-current");
+  });
   if(page==="today")renderToday();
   else if(page==="calendar")renderCalendar();
   else if(page==="add")renderAdd();
@@ -137,33 +143,48 @@ function render(){
 function recentRecords(){
   return entries().filter(([,e])=>e.period||e.notes||e.symptoms.length||e.mood||e.weight||e.temperature||e.intimacy||e.ovulation||e.sleep||e.water||e.breast).reverse();
 }
+const weekdays=["Δευ","Τρ","Τετ","Πεμ","Παρ","Σαβ","Κυρ"];
+function dailyDetails(e){
+  if(!e)return [];
+  return [
+    e.period&&"Περίοδος",e.mood,...e.symptoms,e.weight&&formatWeight(e.weight),
+    e.temperature&&e.temperature+" °C",e.sleep&&e.sleep+" ώρες ύπνου",
+    e.water&&e.water+" ποτήρια νερό",e.intimacy&&"Σεξουαλική επαφή",
+    e.ovulation&&"Θετικό τεστ ωορρηξίας",e.breast&&"Αυτοεξέταση μαστού",e.notes
+  ].filter(Boolean);
+}
 function renderToday(){
-  const p=predictions(),today=isoDate();
-  let headline="Καταχώρησε την περίοδό σου",subtitle="Οι επόμενες εκτιμήσεις θα εμφανιστούν εδώ.";
+  const p=predictions(),today=isoDate(),logged=dailyDetails(state.days[today]);
+  let headline="Η πρώτη καταχώρηση",subtitle="Καταχώρησε την έναρξη της περιόδου σου για να δεις την επόμενη εκτίμηση.";
   if(p.period){
     const days=diffDays(p.period,today);
-    headline=days>0?"Σε "+days+" ημέρες":days===0?"Πιθανή έναρξη σήμερα":"Πιθανή έναρξη περιόδου";
-    subtitle="Επόμενη εκτιμώμενη περίοδος: "+dateLabel(p.period);
+    headline=days>1?"Σε "+days+" ημέρες":days===1?"Αύριο":days===0?"Σήμερα":"Αυτές τις ημέρες";
+    subtitle="Εκτιμώμενη έναρξη · "+dateLabel(p.period);
   }
-  const logged=state.days[today],todayParts=[];
-  if(logged?.period)todayParts.push("Περίοδος");
-  if(logged?.mood)todayParts.push(logged.mood);
-  if(logged?.symptoms?.length)todayParts.push(logged.symptoms.join(", "));
-  if(logged?.water)todayParts.push(logged.water+" ποτήρια νερό");
-  main.innerHTML='<div class="soft-card hero"><small>ΤΟ ΗΜΕΡΟΛΟΓΙΟ ΣΟΥ 🌸</small><strong>'+escapeHtml(headline)+'</strong><p>'+escapeHtml(subtitle)+'</p><div class="hero-actions"><button class="btn" data-go="add">+ Καταχώρηση</button><button class="btn sec" data-go="calendar">Ημερολόγιο</button></div></div>'+
-    '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+'</strong><small>ημέρες</small></div><div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.periodLength+'</strong><small>ημέρες</small></div></div>'+
-    '<div class="section-title"><h2>Σήμερα</h2><button class="text-action" data-go="add">Επεξεργασία</button></div>'+
-    '<div class="card">'+(todayParts.length?'<p>'+escapeHtml(todayParts.join(" · "))+'</p>':'<p class="muted">Δεν έχεις καταχωρήσει κάτι για σήμερα.</p>')+
-    '<button class="btn ghost mini" data-go="add">+ Προσθήκη στοιχείων</button></div>'+
-    '<div class="section-title"><h2>Πρόσφατες εγγραφές</h2><button class="text-action" data-go="reports">Όλες</button></div>'+
-    renderLogList(recentRecords().slice(0,5))+
+  const monday=addDays(today,-((parseDay(today).getDay()+6)%7));
+  const week=weekdays.map((name,index)=>{
+    const day=addDays(monday,index),active=day===today,recorded=!!state.days[day]?.period;
+    return '<button type="button" class="week-day'+(recorded?' recorded':'')+'" data-calendar-date="'+day+'" '+
+      (active?'aria-current="date" ':'')+'aria-label="'+dateLabel(day)+(recorded?', περίοδος':'')+'"><span>'+name+'</span><b>'+Number(day.slice(8))+'</b></button>';
+  }).join("");
+  const longDate=parseDay(today).toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"});
+  main.innerHTML='<div class="today-layout"><section class="today-overview">'+
+    '<div class="hero"><small>Επόμενη περίοδος</small><h2>'+headline+'</h2><p>'+subtitle+'</p>'+
+    '<button class="btn" data-edit="'+today+'">＋ Καταχώρηση για σήμερα</button></div>'+
+    '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+' <small>ημέρες</small></strong></div>'+
+    '<div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.periodLength+' <small>ημέρες</small></strong></div></div>'+
+    '</section><section class="today-diary"><div class="week-card"><div class="section-title"><h2>Η εβδομάδα μου</h2>'+
+    '<button class="text-action" data-calendar-date="'+today+'">Ημερολόγιο ›</button></div><div class="week-strip">'+week+'</div>'+
+    '<div class="week-note"><strong>'+escapeHtml(longDate)+'</strong><p>'+escapeHtml(logged.join(" · ")||"Δεν υπάρχει καταχώρηση για σήμερα.")+'</p></div></div>'+
+    '<div class="section-title"><h2>Πρόσφατες εγγραφές</h2><button class="text-action" data-go="reports">Αναφορές ›</button></div>'+
+    renderLogList(recentRecords().slice(0,5))+'</section></div>'+
     '<p class="hint">Οι προβλέψεις είναι ενδεικτικές και δεν αποτελούν μέθοδο αντισύλληψης ή ιατρική διάγνωση.</p>';
 }
 function renderLogList(records){
   if(!records.length)return '<div class="card empty"><span class="symbol">🌷</span>Οι καταχωρήσεις σου θα εμφανιστούν εδώ.</div>';
   return '<div class="log-list">'+records.map(([day,e])=>{
-    const bits=[e.period?"Περίοδος":null,e.mood,e.symptoms.slice(0,2).join(", "),e.notes].filter(Boolean);
-    return '<div class="log-item"><div class="date-block"><strong>'+escapeHtml(day.slice(8))+'</strong><small>'+escapeHtml(new Intl.DateTimeFormat("el-GR",{month:"short"}).format(parseDay(day)))+'</small></div><div><strong>'+escapeHtml(bits[0]||"Καταχώρηση")+'</strong><p>'+escapeHtml(bits.slice(1).join(" · ")||"Προβολή λεπτομερειών")+'</p></div><button data-edit="'+day+'">Άνοιγμα</button></div>';
+    const bits=dailyDetails(e);
+    return '<div class="log-item"><div class="date-block"><strong>'+escapeHtml(day.slice(8))+'</strong><small>'+escapeHtml(new Intl.DateTimeFormat("el-GR",{month:"short"}).format(parseDay(day)))+'</small></div><div><strong>'+escapeHtml(bits[0]||"Καταχώρηση")+'</strong><p>'+escapeHtml(bits.slice(1).join(" · ")||dateLabel(day))+'</p></div><button data-edit="'+day+'">Άνοιγμα</button></div>';
   }).join("")+'</div>';
 }
 function renderCalendar(){
@@ -175,17 +196,13 @@ function renderCalendar(){
     const isPeriod=actual?.period,predicted=!isPeriod&&isPredictedPeriod(d,p),fertile=p.fertile.includes(d),ovulation=d===p.ovulation;
     const names=["day",!isCurrent?"other":"",isPeriod?"period":"",predicted?"predicted":"",fertile?"fertile":"",ovulation?"ovulation":"",d===isoDate()?"today":"",d===selected?"selected":""].filter(Boolean).join(" ");
     const previous=p.starts.filter(s=>s<=d).at(-1),cycleDay=previous?diffDays(d,previous)+1:0;
-    days.push('<button type="button" class="'+names+'" data-day="'+d+'" aria-label="'+escapeHtml(dateLabel(d))+'"><span class="number">'+Number(d.slice(8))+(cycleDay>0&&cycleDay<=p.cycle?'<span class="cycle-number">'+cycleDay+'</span>':'')+'</span>'+(actual&&!isPeriod?'<span class="day-mark"></span>':ovulation?'<span class="day-mark"></span>':'')+'</button>');
+    days.push('<button type="button" class="'+names+'" data-day="'+d+'" aria-pressed="'+(d===selected)+'" aria-label="'+escapeHtml([dateLabel(d),isPeriod&&"περίοδος",predicted&&"πρόβλεψη περιόδου",fertile&&"γόνιμο διάστημα",d===isoDate()&&"σήμερα"].filter(Boolean).join(", "))+'"><span class="number">'+Number(d.slice(8))+(cycleDay>0&&cycleDay<=p.cycle?'<span class="cycle-number">'+cycleDay+'</span>':'')+'</span>'+(actual&&!isPeriod?'<span class="day-mark"></span>':ovulation?'<span class="day-mark"></span>':'')+'</button>');
   }
-  const chosen=state.days[selected],selectedBits=[];
-  if(chosen?.period)selectedBits.push("Καταγεγραμμένη περίοδος");
-  if(chosen?.mood)selectedBits.push(chosen.mood);
-  if(chosen?.symptoms?.length)selectedBits.push(chosen.symptoms.join(", "));
-  if(chosen?.notes)selectedBits.push(chosen.notes);
-  main.innerHTML='<div class="month-head"><button data-month="-1" aria-label="Προηγούμενος μήνας">‹</button><h2>'+escapeHtml(monthLabel(year,month))+'</h2><button data-month="1" aria-label="Επόμενος μήνας">›</button></div>'+
-    '<div class="weekday-row">'+["Δευ","Τρ","Τετ","Πεμ","Παρ","Σαβ","Κυρ"].map(d=>"<span>"+d+"</span>").join("")+'</div>'+
+  const selectedBits=dailyDetails(state.days[selected]);
+  main.innerHTML='<div class="calendar-panel"><div class="month-head"><button data-month="-1" aria-label="Προηγούμενος μήνας">‹</button><h2>'+escapeHtml(monthLabel(year,month))+'</h2><button data-month="1" aria-label="Επόμενος μήνας">›</button></div>'+
+    '<div class="weekday-row">'+weekdays.map(d=>"<span>"+d+"</span>").join("")+'</div>'+
     '<div class="calendar-grid">'+days.join("")+'</div>'+
-    '<div class="legend"><span style="--swatch:#ff9aa8">Περίοδος</span><span style="--swatch:#ffdce6">Πρόβλεψη</span><span style="--swatch:#cab8ee">Γόνιμο διάστημα</span></div>'+
+    '<div class="legend"><span style="--swatch:#a84363">Περίοδος</span><span style="--swatch:#eebcce">Πρόβλεψη</span><span style="--swatch:#aa9bc1">Γόνιμο διάστημα</span></div></div>'+
     '<div class="day-summary"><strong>'+escapeHtml(dateLabel(selected))+'</strong><p>'+escapeHtml(selectedBits.join(" · ")||"Δεν υπάρχουν καταχωρήσεις.")+'</p><button class="btn mini" style="margin-top:12px" data-go="add">+ Καταχώρηση</button></div>'+
     '<p class="hint">Οι πιθανές γόνιμες ημέρες υπολογίζονται προσεγγιστικά και δεν πρέπει να χρησιμοποιούνται για αντισύλληψη.</p>';
 }
@@ -197,14 +214,14 @@ function renderAdd(){
     '<div class="toggle-row"><label for="entryPeriodRange">Σήμανση περιόδου για '+int(state.settings.periodLength,5)+' ημέρες συνολικά<br><small class="muted">Προαιρετικό · διατηρεί άλλες καταχωρήσεις</small></label><input type="checkbox" id="entryPeriodRange"></div>'+
     '<label class="entry-label">Διάθεση</label><div class="pill-row" id="moodPills">'+MOODS.map(v=>'<button class="pill '+(e.mood===v?"selected":"")+'" type="button" data-mood="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>').join("")+'</div>'+
     '<label class="entry-label">Συμπτώματα</label><div class="checklist" id="symptomPills">'+SYMPTOMS.map(v=>'<button class="pill '+(e.symptoms.includes(v)?"selected":"")+'" type="button" data-symptom="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>').join("")+'</div></div>'+
-    '<div class="card"><div class="form-grid"><div>'+field("Βάρος (kg)","entryWeight","number",e.weight,'min="1" max="499" step="0.1" inputmode="decimal"')+'</div><div>'+field("Θερμοκρασία (°C)","entryTemp","number",e.temperature,'min="30" max="44" step="0.01" inputmode="decimal"')+'</div><div>'+field("Ύπνος (ώρες)","entrySleep","number",e.sleep,'min="0" max="24" step="0.5" inputmode="decimal"')+'</div><div>'+field("Νερό (ποτήρια)","entryWater","number",e.water,'min="0" max="30" step="1"')+'</div></div>'+
+    '<div class="card"><div class="form-grid"><div>'+field("Βάρος (kg)","entryWeight","number",e.weight,'min="1" max="499" step="0.01" inputmode="decimal"')+'</div><div>'+field("Θερμοκρασία (°C)","entryTemp","number",e.temperature,'min="30" max="44" step="0.01" inputmode="decimal"')+'</div><div>'+field("Ύπνος (ώρες)","entrySleep","number",e.sleep,'min="0" max="24" step="0.5" inputmode="decimal"')+'</div><div>'+field("Νερό (ποτήρια)","entryWater","number",e.water,'min="0" max="30" step="1"')+'</div></div>'+
     '<div class="toggle-row"><label for="entryIntimacy">💗 Σεξουαλική ζωή</label><input type="checkbox" id="entryIntimacy" '+(e.intimacy?"checked":"")+'></div>'+
     '<div class="toggle-row"><label for="entryOvulation">🧪 Θετικό τεστ ωορρηξίας</label><input type="checkbox" id="entryOvulation" '+(e.ovulation?"checked":"")+'></div>'+
     '<div class="toggle-row"><label for="entryBreast">🎀 Αυτοεξέταση μαστού</label><input type="checkbox" id="entryBreast" '+(e.breast?"checked":"")+'></div>'+
     '<label class="entry-label" for="entryNotes">Προσωπικές σημειώσεις</label><textarea class="form-control" id="entryNotes" maxlength="2000" placeholder="Γράψε ό,τι θέλεις…">'+escapeHtml(e.notes)+'</textarea></div>'+
     '<button type="submit" class="btn full">Αποθήκευση καταχώρησης</button>'+
     (state.days[selected]?'<button type="button" id="deleteEntry" class="btn danger full" style="margin-top:10px">Διαγραφή καταχώρησης</button>':'')+
-    '<p class="hint">Τα δεδομένα αποθηκεύονται μόνο σε αυτή τη συσκευή.</p></form>';
+    '<p class="hint">Οι καταχωρήσεις σου συγχρονίζονται κρυπτογραφημένες.</p></form>';
   if(e.mood)main.dataset.mood=e.mood;else delete main.dataset.mood;
 }
 function renderReminders(){
@@ -229,8 +246,10 @@ function chart(data,key){
 function renderReports(){
   if(reportDetail){
     const data=reportFiltered(reportDetail),label=REPORTS.find(r=>r[0]===reportDetail),isChart=["weight","temperature","sleep","water"].includes(reportDetail);
-    const value=([,e])=>reportDetail==="symptoms"?e.symptoms.join(", "):reportDetail==="period"?e.flow:reportDetail==="intimacy"?"Καταχώρηση":reportDetail==="ovulation"?"Θετικό":reportDetail==="breast"?"Ολοκληρώθηκε":reportDetail==="weight"?e.weight+" kg":reportDetail==="temperature"?e.temperature+" °C":reportDetail==="sleep"?e.sleep+" ώρες":e.water+" ποτήρια";
-    main.innerHTML='<button class="text-action" data-report-back>‹ Πίσω στις αναφορές</button><h2 class="report-section-header">'+label[1]+' '+label[2]+'</h2><div class="card" style="margin-top:15px"><strong>'+data.length+' καταχωρήσεις</strong>'+(isChart?chart(data,reportDetail):'')+'</div><div class="log-list">'+(data.length?data.slice(0,70).map(record=>'<div class="log-item"><div class="date-block"><strong>'+record[0].slice(8)+'</strong><small>'+record[0].slice(5,7)+'</small></div><div><strong>'+escapeHtml(value(record))+'</strong><p>'+escapeHtml(dateLabel(record[0]))+'</p></div><button data-edit="'+record[0]+'">Άνοιγμα</button></div>').join(""):'<div class="empty">Δεν υπάρχουν καταχωρήσεις.</div>')+'</div>';
+    const value=([,e])=>reportDetail==="symptoms"?e.symptoms.join(", "):reportDetail==="period"?e.flow:reportDetail==="intimacy"?"Καταχώρηση":reportDetail==="ovulation"?"Θετικό":reportDetail==="breast"?"Ολοκληρώθηκε":reportDetail==="weight"?formatWeight(e.weight):reportDetail==="temperature"?e.temperature+" °C":reportDetail==="sleep"?e.sleep+" ώρες":e.water+" ποτήρια";
+    const latestWeight=reportDetail==="weight"&&data.length?
+      '<div class="latest-weight"><span>Τελευταία μέτρηση</span><strong>'+formatWeight(data[0][1].weight)+'</strong><small>'+dateLabel(data[0][0])+'</small></div>':'';
+    main.innerHTML='<button class="text-action" data-report-back>‹ Πίσω στις αναφορές</button><h2 class="report-section-header">'+label[1]+' '+label[2]+'</h2><div class="card" style="margin-top:15px">'+latestWeight+'<strong>'+data.length+' καταχωρήσεις</strong>'+(isChart?chart(data,reportDetail):'')+'</div><div class="log-list">'+(data.length?data.slice(0,70).map(record=>'<div class="log-item"><div class="date-block"><strong>'+record[0].slice(8)+'</strong><small>'+record[0].slice(5,7)+'</small></div><div><strong>'+escapeHtml(value(record))+'</strong><p>'+escapeHtml(dateLabel(record[0]))+'</p></div><button data-edit="'+record[0]+'">Άνοιγμα</button></div>').join(""):'<div class="empty">Δεν υπάρχουν καταχωρήσεις.</div>')+'</div>';
     return;
   }
   const p=predictions();
@@ -239,7 +258,7 @@ function renderReports(){
     '<p class="hint">Οι μέσοι όροι υπολογίζονται από τις καταχωρήσεις σου. Οι προβλέψεις είναι μόνο ενδεικτικές.</p>';
 }
 function renderSettings(){
-  main.innerHTML='<div class="soft-card"><span class="eyebrow">ΠΡΟΣΩΠΙΚΕΣ ΡΥΘΜΙΣΕΙΣ</span><h2 style="margin:9px 0 3px">Το ημερολόγιό σου 🌸</h2><p class="hint">Όλες οι καταχωρήσεις παραμένουν μόνο σε αυτή τη συσκευή.</p></div>'+
+  main.innerHTML='<div class="soft-card"><span class="eyebrow">ΠΡΟΣΩΠΙΚΕΣ ΡΥΘΜΙΣΕΙΣ</span><h2 style="margin:9px 0 3px">Το ημερολόγιό σου</h2><p class="hint">Διάρκεια κύκλου, συγχρονισμός και αντίγραφα ασφαλείας.</p></div>'+
    '<div class="card"><h2>Προεπιλεγμένες διάρκειες</h2><label class="entry-label" for="cycleSetting">Διάρκεια κύκλου (ημέρες)</label><input class="form-control" type="number" min="15" max="75" id="cycleSetting" value="'+int(state.settings.cycleLength,29)+'">'+
    '<label class="entry-label" for="periodSetting">Διάρκεια περιόδου (ημέρες)</label><input class="form-control" type="number" min="1" max="12" id="periodSetting" value="'+int(state.settings.periodLength,5)+'">'+
    '<button class="btn full" id="saveSettings" style="margin-top:15px">Αποθήκευση ρυθμίσεων</button></div>'+
@@ -249,6 +268,7 @@ function renderSettings(){
    '<button type="button" class="btn ghost full" id="cloudLogout" style="margin-top:9px">Αποσύνδεση</button></div>'+
    '<div class="card"><h2>Τα δεδομένα σου</h2><p class="hint">Κράτησε αντίγραφο αν αλλάξεις κινητό ή καθαρίσεις τα δεδομένα browser.</p>'+
    '<button class="btn sec full" id="exportData">↓ Εξαγωγή αντιγράφου JSON</button>'+
+   '<label class="entry-label" for="importWeightUnit">Μονάδα βάρους στο αρχικό FPC</label><select class="form-control" id="importWeightUnit"><option value="auto">Αυτόματη αναγνώριση</option><option value="lb">Λίβρες (lb)</option><option value="kg">Κιλά (kg)</option></select>'+
    '<label class="entry-label" for="importFile">Εισαγωγή Period Calendar .fpc ή JSON</label><input class="form-control" type="file" accept=".fpc,.json,application/json" id="importFile">'+
    '<p class="hint">Το αρχείο διαβάζεται στη συσκευή. Δεν ανεβαίνει στο Cloudflare. Οι ήδη καταχωρημένες ημέρες δεν αντικαθίστανται όταν εισάγεις παλιό FPC.</p>'+
    (state.sourceFpc?.periodRecords?'<p class="notice">📚 Παλαιό ιστορικό: '+state.sourceFpc.periodRecords.length+' κύκλοι · '+(state.sourceFpc.dailyRecords?.length||0)+' ημερήσιες καταχωρήσεις. Οι αρνητικές διάρκειες έχουν σημανθεί ως εκτιμήσεις.</p>':'')+
@@ -310,11 +330,17 @@ async function importBackup(file){
   }
   try{
     toast("Διαβάζω το αντίγραφο…");
-    const parsed=isFpc?await convertFpc(await file.arrayBuffer()):JSON.parse(await file.text());
+    const weightUnit=$("importWeightUnit").value;
+    const parsed=isFpc?await convertFpc(await file.arrayBuffer(),weightUnit):JSON.parse(await file.text());
     const backup=parsed?.app==="MyDiary"?parsed.data:parsed;
     if(!backup||!backup.days||typeof backup.days!=="object"||Array.isArray(backup.days))
       throw Error("Μη έγκυρο αντίγραφο.");
     if(!isFpc)restoreArchivedWater(parsed);
+    if(!isFpc)normalizeFpcWeights(backup,weightUnit);
+    const originalFpc=isFpc||parsed.importInfo?.source==="Period Calendar FPC";
+    if(originalFpc&&!backup.sourceFpc?.weightsNormalized&&
+        backup.sourceFpc?.dailyRecords?.some(row=>Number(row?.weight)>0))
+      throw Error("Διάλεξε τη μονάδα βάρους του αρχείου και επίλεξε ξανά το αρχείο.");
     const days=Object.entries(backup.days);
     if(days.length>20000)throw Error("Το αντίγραφο περιέχει υπερβολικά πολλές εγγραφές.");
     const isLegacy=isFpc||backup.sourceFpc?.format==="fpc-v18";
@@ -376,11 +402,16 @@ document.addEventListener("click",event=>{
   if(target.dataset.nav){setPage(target.dataset.nav);return}
   if(target.dataset.go){setPage(target.dataset.go);return}
   if(target.dataset.drawer){closeDrawer();setPage(target.dataset.drawer);return}
+  if(target.dataset.calendarDate){
+    selected=target.dataset.calendarDate;calendarMonth=monthOf(selected);setPage("calendar");return;
+  }
   if(target.dataset.month){
     const d=new Date(calendarMonth.year,calendarMonth.month+Number(target.dataset.month),1);
-    calendarMonth={year:d.getFullYear(),month:d.getMonth()};render();return;
+    const end=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+    d.setDate(Math.min(parseDay(selected).getDate(),end));
+    selected=isoDate(d);calendarMonth=monthOf(selected);render();return;
   }
-  if(target.dataset.day){selected=target.dataset.day;render();return}
+  if(target.dataset.day){selected=target.dataset.day;calendarMonth=monthOf(selected);render();return}
   if(target.dataset.edit){selected=target.dataset.edit;setPage("add");return}
   if(target.dataset.report){reportDetail=target.dataset.report;render();return}
   if(target.hasAttribute("data-report-back")){reportDetail="";render();return}
@@ -447,8 +478,10 @@ cloud=createCloud({
     for(const [day,entry] of days)
       if(validDate(day)&&entry&&typeof entry==="object")
         fresh.days[day]=normalizeEntry(entry);
+    const migrated=normalizeFpcWeights(fresh);
     state=fresh;
     render();
+    return migrated;
   },
   loadLegacy:()=>{
     load();
