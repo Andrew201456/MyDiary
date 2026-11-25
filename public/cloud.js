@@ -210,13 +210,13 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
     const currentRevision=revision,currentToken=token;
     try{
       const remote=await api("vault","GET",undefined,token);
-      if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
+      if(token!==currentToken||revision!==currentRevision||pending||uploading||(!force&&!canRefresh()))return;
       if(remote.revision===revision){
         connectionRestored();
         if(force)setStatus("Το ημερολόγιο είναι ενημερωμένο.","ok");
       }else if(remote.revision>revision&&remote.ciphertext){
         const snapshot=await decrypt(key,remote.ciphertext);
-        if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
+        if(token!==currentToken||revision!==currentRevision||pending||uploading||(!force&&!canRefresh()))return;
         connectionRestored();
         const migrated=applyState(snapshot);
         revision=remote.revision;
