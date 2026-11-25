@@ -162,7 +162,7 @@ function renderToday(){
     subtitle="Εκτιμώμενη έναρξη · "+dateLabel(p.period);
   }
   const postscript=cloud?.username==="markarv"
-    ? '<p class="personal-message"><strong>Υ.Γ.</strong> Να να πίνεις πολυ νερο Μαρια, ο αντρας σου</p>'
+    ? '<p class="personal-message"><strong>Υ.Γ.</strong> Να πίνεις πολύ νερό Αγάπη μου.<br>-Ο Άντρας σου &lt;3</p>'
     : '';
   const monday=addDays(today,-((parseDay(today).getDay()+6)%7));
   const week=weekdays.map((name,index)=>{
