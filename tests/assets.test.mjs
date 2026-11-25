@@ -44,7 +44,7 @@ test("Installable PWA has 192 and 512 bitmap icons",()=>{
     assert.equal(png.readUInt32BE(16),size);
     assert.equal(png.readUInt32BE(20),size);
   }
-  assert(sw.includes("mydiary-shell-v5"));
+  assert(sw.includes("mydiary-shell-v6"));
   assert(!sw.includes("caches.put"),"Verify SW does not blindly store API replies");
   assert(sw.includes('pathname.startsWith("/api/")'));
 });

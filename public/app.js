@@ -486,16 +486,21 @@ cloud=createCloud({
     load();
     return state;
   },
-  onStatus:(msg,type)=>{
+  onStatus:msg=>{
+    if($("cloudLogin").hidden)toast(msg);
+  },
+  onConnection:status=>{
     const banner=$("cloudSyncBanner");
     clearTimeout(statusTimer);
-    banner.textContent=msg;
-    banner.classList.toggle("error",type==="error");
-    banner.classList.toggle("ok",type==="ok");
-    banner.hidden=false;
-    if(type==="ok")statusTimer=setTimeout(()=>{
-      banner.textContent="Συνδεδεμένο";
-    },3500);
+    const initial=status==="initial",offline=status==="offline";
+    banner.hidden=!initial&&!offline;
+    banner.classList.toggle("error",offline);
+    banner.classList.toggle("ok",initial);
+    banner.textContent=initial?"Συνδεδεμένο":offline?"Χωρίς σύνδεση":"";
+    if(initial)statusTimer=setTimeout(()=>{
+      banner.hidden=true;
+      banner.textContent="";
+    },2000);
   },
   onReady:username=>{
     if(!username){state=defaultData();render()}
