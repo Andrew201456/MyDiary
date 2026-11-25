@@ -142,3 +142,5 @@ body.cloud-locked .cloud-sync-banner { display: none; }
 @media (min-width: 780px) {
   .today-layout { display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px; align-items: start; }
 }
+
+.hero .personal-message { margin: 0 0 22px; font-size: clamp(1.65rem, 4vw, 2.4rem); line-height: 1.2; }
