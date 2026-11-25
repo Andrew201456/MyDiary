@@ -2,6 +2,7 @@
  * Server receives a PBKDF2-authenticated request and only AES-GCM ciphertext.
  * The cryptographic key and password never go into localStorage.
  */
+import {loadRemembered,storeRemembered,forgetRemembered,validRemembered} from "./remember.js";
 const enc=new TextEncoder(),dec=new TextDecoder();
 const pack=bytes=>{
   // A full FPC archive may be hundreds of KB. Spreading all bytes into one
@@ -116,14 +117,15 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
       pending=readState();
     }
   };
-  async function enter(name,password){
-    const result=await api("login","POST",{username:name,password});
-    const derived=await derive(password,result.vaultSalt);
-    token=result.token;key=derived;user=result.username;locked=true;
+  async function activateSession(session){
+    token=session.token;key=session.key;user=session.username;locked=true;
+    pending=null;halted=false;cacheWarning="";revision=0;
     try{await handleRemote()}
     catch(error){
-      token=null;key=null;user="";throw error;
+      token=null;key=null;user="";pending=null;revision=0;throw error;
     }
+  }
+  function unlock(){
     gate.hidden=true;document.body.classList.remove("cloud-locked");
     locked=false;
     connectionFailed=false;
@@ -131,7 +133,45 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
     onReady?.(user);
     if(pending)queueSave(pending);
     if(cacheWarning)setStatus(cacheWarning,"error");
-
+  }
+  async function enter(name,password,remember){
+    const result=await api("login","POST",{username:name,password});
+    const derived=await derive(password,result.vaultSalt);
+    const session={token:result.token,key:derived,username:result.username,expires:result.expires};
+    await activateSession(session);
+    let warning="";
+    try{
+      if(remember)await storeRemembered(session);
+      else await forgetRemembered();
+    }catch{
+      // Current login remains usable if private browsing blocks IndexedDB.
+      warning="Η συσκευή δεν επέτρεψε την αποθήκευση της σύνδεσης.";
+    }
+    unlock();
+    if(warning)setStatus(warning,"error");
+  }
+  async function restoreRemembered(){
+    let saved;
+    try{saved=await loadRemembered()}catch{return}
+    if(!saved)return;
+    if(!validRemembered(saved)){
+      await forgetRemembered(saved.token).catch(()=>{});return;
+    }
+    try{
+      const identity=await api("me","GET",undefined,saved.token);
+      if(identity.username!==saved.username){
+        await forgetRemembered(saved.token);return;
+      }
+      await activateSession(saved);
+      unlock();
+    }catch(error){
+      if(error.status===401){
+        await forgetRemembered(saved.token).catch(()=>{});
+        setStatus("Η προηγούμενη σύνδεση έληξε. Συνδέσου ξανά.");
+      }else{
+        setStatus("Δεν ήταν δυνατή η αυτόματη σύνδεση. Δοκίμασε ξανά όταν έχεις internet ή συνδέσου χειροκίνητα.");
+      }
+    }
   }
   async function submit(event){
     event.preventDefault();
@@ -139,6 +179,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
     const pass=document.getElementById("cloudPassword").value;
     const button=document.getElementById("cloudSubmit");
     const mode=document.getElementById("cloudMode").value;
+    if(button.disabled)return;
     if(!name||!pass){setStatus("Συμπλήρωσε username και password.");return}
     button.disabled=true;setStatus("Σύνδεση με Cloudflare…");
     try{
@@ -146,7 +187,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
         const signupCode=document.getElementById("cloudSignupCode").value;
         await api("register","POST",{username:name,password:pass,signupCode});
       }
-      await enter(name,pass);
+      await enter(name,pass,document.getElementById("cloudRemember")?.checked!==false);
       document.getElementById("cloudPassword").value="";
       document.getElementById("cloudSignupCode").value="";
     }catch(error){setStatus(error.message||"Σφάλμα σύνδεσης.");}
@@ -179,6 +220,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
         halted=true;
         setStatus("ΣΥΓΚΡΟΥΣΗ: άλλη συσκευή άλλαξε το ιστορικό. Δεν αντικατέστησα τα cloud δεδομένα. Κάνε εξαγωγή του τρέχοντος ημερολογίου και σύνδεση ξανά.","error");
       }else if(error.status===401){
+        await forgetRemembered(token).catch(()=>{});
         halted=true;setStatus("Η cloud συνεδρία έληξε. Κάνε εξαγωγή και ξανασυνδέσου.","error");
       }else{
         if(!error.status)connectionLost();
@@ -225,7 +267,16 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
       }else{
         setStatus("Ασυμφωνία cloud revision. Δεν άλλαξα κανένα δεδομένο.","error");
       }
-    }catch(error){if(!error.status){connectionLost();return}setStatus("Αποτυχία ελέγχου cloud: "+error.message,"error")}
+    }catch(error){
+      if(error.status===401){
+        await forgetRemembered(currentToken).catch(()=>{});
+        if(token===currentToken&&!pending&&!uploading){await logout();setStatus("Η συνεδρία έληξε. Συνδέσου ξανά.");}
+        else setStatus("Η συνεδρία έληξε. Κάνε εξαγωγή των εκκρεμών αλλαγών.","error");
+        return;
+      }
+      if(!error.status){connectionLost();return}
+      setStatus("Αποτυχία ελέγχου cloud: "+error.message,"error");
+    }
   }
   async function downloadPending(){
     if(!key||!user){setStatus("Συνδέσου πρώτα.","error");return}
@@ -247,7 +298,16 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
       setStatus("Υπάρχουν μη συγχρονισμένα δεδομένα. Πρώτα κατέβασε αντίγραφο.","error");
       return;
     }
-    try{if(token)await api("logout","POST",{},token)}catch{}
+    // Remove the locally remembered key even when the network is unavailable.
+    let forgotten=false,revoked=false;
+    try{await forgetRemembered(token);forgotten=true}catch{}
+    try{if(token){await api("logout","POST",{},token);revoked=true}}catch(error){revoked=error.status===401}
+    if(!forgotten&&!revoked){
+      setStatus("Δεν μπόρεσε να αφαιρεθεί η αποθηκευμένη σύνδεση. Δοκίμασε ξανά με internet.","error");
+      return;
+    }
+    if(scheduled)clearTimeout(scheduled);
+    scheduled=null;halted=false;pending=null;
     token=null;key=null;user="";locked=true;revision=0;cacheWarning="";
     gate.hidden=false;document.body.classList.add("cloud-locked");
     document.getElementById("cloudPassword").value="";
@@ -275,6 +335,9 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
       document.getElementById("cloudSubmit").textContent=
         isNew?"Δημιουργία λογαριασμού":"Σύνδεση";
     });
+    const submitButton=document.getElementById("cloudSubmit");
+    submitButton.disabled=true;modeButton.disabled=true;
+    restoreRemembered().finally(()=>{submitButton.disabled=false;modeButton.disabled=false});
     window.addEventListener("offline",()=>{
       if(!locked)connectionLost();
     });
