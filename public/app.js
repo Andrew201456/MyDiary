@@ -408,7 +408,7 @@ async function importBackup(file){
       throw Error("Διάλεξε τη μονάδα βάρους του αρχείου και επίλεξε ξανά το αρχείο.");
     const days=Object.entries(backup.days);
     if(days.length>20000)throw Error("Το αντίγραφο περιέχει υπερβολικά πολλές εγγραφές.");
-    const isLegacy=isFpc||backup.sourceFpc?.format==="fpc-v18";
+    const isLegacy=isFpc||originalFpc&&parsed?.app!=="MyDiary";
     const oldCount=Object.keys(state.days).length;
     const valid=days.filter(([day,entry])=>validDate(day)&&entry&&typeof entry==="object"&&!Array.isArray(entry));
     const overlap=valid.filter(([day])=>Object.hasOwn(state.days,day)).length;
