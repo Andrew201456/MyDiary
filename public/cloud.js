@@ -62,6 +62,7 @@ async function api(path,method="GET",payload,token){
 export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,canRefresh=()=>true}){
   let token=null,key=null,user="",revision=0,locked=true,uploading=false;
   let pending=null,halted=false,scheduled=null,cacheWarning="";
+  let connectionFailed=false;
   const gate=document.getElementById("cloudLogin");
   const notice=document.getElementById("cloudMessage");
   const setStatus=(message,type="info")=>{
@@ -118,7 +119,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
     onReady?.(user);
     if(pending)queueSave(pending);
     if(cacheWarning)setStatus(cacheWarning,"error");
-    else setStatus("Cloud ενεργό • "+user,"ok");
+    else if(!pending)setStatus("Το Cloudflare είναι ενημερωμένο ✓","ok");
   }
   async function submit(event){
     event.preventDefault();
@@ -151,7 +152,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
       // Only the encrypted blob is kept as a temporary local offline copy.
       try{localStorage.setItem(cacheKey(),JSON.stringify({ciphertext,revision}));}catch{}
       const updated=await api("vault","PUT",{revision,ciphertext},token);
-      revision=updated.revision;
+      revision=updated.revision;connectionFailed=false;
       if(!pending){
         try{
           localStorage.removeItem(cacheKey());
@@ -198,10 +199,12 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
       const remote=await api("vault","GET",undefined,token);
       if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
       if(remote.revision===revision){
-        setStatus("Το Cloudflare είναι ενημερωμένο ✓","ok");
+        if(connectionFailed||force)setStatus("Συνδεδεμένο","ok");
+        connectionFailed=false;
       }else if(remote.revision>revision&&remote.ciphertext){
         const snapshot=await decrypt(key,remote.ciphertext);
         if(token!==currentToken||revision!==currentRevision||pending||uploading)return;
+        connectionFailed=false;
         const migrated=applyState(snapshot);
         revision=remote.revision;
         if(migrated&&!cacheWarning)queueSave(readState());
@@ -209,7 +212,7 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
       }else{
         setStatus("Ασυμφωνία cloud revision. Δεν άλλαξα κανένα δεδομένο.","error");
       }
-    }catch(error){setStatus("Αποτυχία ελέγχου cloud: "+error.message,"error")}
+    }catch(error){connectionFailed=true;setStatus("Αποτυχία ελέγχου cloud: "+error.message,"error")}
   }
   async function downloadPending(){
     if(!key||!user){setStatus("Συνδέσου πρώτα.","error");return}
@@ -258,7 +261,17 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onReady,ca
       document.getElementById("cloudSubmit").textContent=
         isNew?"Δημιουργία λογαριασμού":"Σύνδεση";
     });
-    window.addEventListener("online",()=>{if(!halted)sync()});
+    window.addEventListener("offline",()=>{
+      if(!locked&&!halted){connectionFailed=true;setStatus("Χωρίς σύνδεση","error")}
+    });
+    window.addEventListener("online",()=>{
+      if(locked||halted)return;
+      if(!pending&&!uploading&&!canRefresh()){
+        api("health").then(()=>{if(!locked&&connectionFailed&&!pending&&!uploading&&navigator.onLine){
+          connectionFailed=false;setStatus("Συνδεδεμένο","ok");
+        }}).catch(()=>{});
+      }else sync();
+    });
     window.addEventListener("focus",()=>{if(!pending&&!uploading&&!locked)sync()});
     setInterval(()=>{if(!pending&&!uploading&&!locked)sync()},90000);
     window.addEventListener("beforeunload",event=>{

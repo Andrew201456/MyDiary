@@ -177,8 +177,7 @@ function renderToday(){
     '<button class="text-action" data-calendar-date="'+today+'">Ημερολόγιο ›</button></div><div class="week-strip">'+week+'</div>'+
     '<div class="week-note"><strong>'+escapeHtml(longDate)+'</strong><p>'+escapeHtml(logged.join(" · ")||"Δεν υπάρχει καταχώρηση για σήμερα.")+'</p></div></div>'+
     '<div class="section-title"><h2>Πρόσφατες εγγραφές</h2><button class="text-action" data-go="reports">Αναφορές ›</button></div>'+
-    renderLogList(recentRecords().slice(0,5))+'</section></div>'+
-    '<p class="hint">Οι προβλέψεις είναι ενδεικτικές και δεν αποτελούν μέθοδο αντισύλληψης ή ιατρική διάγνωση.</p>';
+    renderLogList(recentRecords().slice(0,5))+'</section></div>';
 }
 function renderLogList(records){
   if(!records.length)return '<div class="card empty"><span class="symbol">🌷</span>Οι καταχωρήσεις σου θα εμφανιστούν εδώ.</div>';
@@ -202,7 +201,7 @@ function renderCalendar(){
   main.innerHTML='<div class="calendar-panel"><div class="month-head"><button data-month="-1" aria-label="Προηγούμενος μήνας">‹</button><h2>'+escapeHtml(monthLabel(year,month))+'</h2><button data-month="1" aria-label="Επόμενος μήνας">›</button></div>'+
     '<div class="weekday-row">'+weekdays.map(d=>"<span>"+d+"</span>").join("")+'</div>'+
     '<div class="calendar-grid">'+days.join("")+'</div>'+
-    '<div class="legend"><span style="--swatch:#a84363">Περίοδος</span><span style="--swatch:#eebcce">Πρόβλεψη</span><span style="--swatch:#aa9bc1">Γόνιμο διάστημα</span></div></div>'+
+    '<div class="legend"><span style="--swatch:#efc4d4">Περίοδος</span><span style="--swatch:#eebcce">Πρόβλεψη</span><span style="--swatch:#aa9bc1">Γόνιμο διάστημα</span></div></div>'+
     '<div class="day-summary"><strong>'+escapeHtml(dateLabel(selected))+'</strong><p>'+escapeHtml(selectedBits.join(" · ")||"Δεν υπάρχουν καταχωρήσεις.")+'</p><button class="btn mini" style="margin-top:12px" data-go="add">+ Καταχώρηση</button></div>'+
     '<p class="hint">Οι πιθανές γόνιμες ημέρες υπολογίζονται προσεγγιστικά και δεν πρέπει να χρησιμοποιούνται για αντισύλληψη.</p>';
 }
@@ -226,12 +225,11 @@ function renderAdd(){
 }
 function renderReminders(){
   const p=predictions(),next=p.period?dateLabel(p.period):"Δεν έχει καταχωρηθεί περίοδος";
-  main.innerHTML='<div class="soft-card"><span class="eyebrow">ΜΙΚΡΕΣ ΥΠΕΝΘΥΜΙΣΕΙΣ</span><h2 style="margin:10px 0">Ό,τι χρειάζεσαι, στην ώρα του 🌷</h2><p class="hint">Οι ειδοποιήσεις του browser λειτουργούν όσο η εφαρμογή παραμένει ανοιχτή.</p></div>'+
+  main.innerHTML='<div class="soft-card"><span class="eyebrow">ΜΙΚΡΕΣ ΥΠΕΝΘΥΜΙΣΕΙΣ</span><h2 style="margin:10px 0">Ό,τι χρειάζεσαι, στην ώρα του 🌷</h2></div>'+
    '<div class="card"><div class="toggle-row"><label for="remindPeriod"><strong>Επόμενη περίοδος</strong><br><small class="muted">'+escapeHtml(next)+'</small></label><input id="remindPeriod" type="checkbox" '+(state.settings.remindPeriod?"checked":"")+'></div>'+
    '<div class="toggle-row"><label for="remindWater"><strong>Να πίνεις νερό</strong><br><small class="muted">Καθημερινή υπενθύμιση</small></label><input id="remindWater" type="checkbox" '+(state.settings.remindWater?"checked":"")+'></div>'+
    '<label class="entry-label" for="remindHour">Ώρα για νερό</label><input class="form-control" id="remindHour" type="time" value="'+String(state.settings.remindWaterHour||12).padStart(2,"0")+':00">'+
-   '<button type="button" id="allowNotifications" class="btn sec full" style="margin-top:17px">Ενεργοποίηση ειδοποιήσεων</button></div>'+
-   '<div class="notice">Για αξιόπιστες ειδοποιήσεις όταν η εφαρμογή είναι κλειστή, απαιτείται ξεχωριστή υπηρεσία push. Οι εκτιμήσεις κύκλου δεν είναι ιατρικές συμβουλές.</div>';
+   '<button type="button" id="allowNotifications" class="btn sec full" style="margin-top:17px">Ενεργοποίηση ειδοποιήσεων</button></div>';
 }
 function reportFiltered(key){
   return entries().filter(([,e])=>key==="period"?e.period:key==="symptoms"?e.symptoms.length:key==="weight"?e.weight:key==="temperature"?e.temperature:key==="intimacy"?e.intimacy:key==="ovulation"?e.ovulation:key==="sleep"?e.sleep:key==="breast"?e.breast:key==="water"?e.water:false).reverse();
@@ -466,6 +464,7 @@ $("topAction").addEventListener("click",()=>{selected=isoDate();calendarMonth=mo
 // Existing plaintext storage is consulted only for one-time migration from
 // the original local-only app, and removed AFTER confirmed cloud upload.
 render();
+let statusTimer;
 cloud=createCloud({
   canRefresh:()=>page!=="add"&&page!=="settings",
   readState:()=>state,
@@ -489,10 +488,14 @@ cloud=createCloud({
   },
   onStatus:(msg,type)=>{
     const banner=$("cloudSyncBanner");
+    clearTimeout(statusTimer);
     banner.textContent=msg;
     banner.classList.toggle("error",type==="error");
     banner.classList.toggle("ok",type==="ok");
     banner.hidden=false;
+    if(type==="ok")statusTimer=setTimeout(()=>{
+      banner.textContent="Συνδεδεμένο";
+    },3500);
   },
   onReady:username=>{
     if(!username){state=defaultData();render()}
