@@ -299,11 +299,13 @@ export function createCloud({readState,applyState,loadLegacy,onStatus,onConnecti
       return;
     }
     // Remove the locally remembered key even when the network is unavailable.
-    try{await forgetRemembered(token)}catch{
-      setStatus("Δεν μπόρεσε να αφαιρεθεί η αποθηκευμένη σύνδεση. Δοκίμασε ξανά ή καθάρισε τα δεδομένα σύνδεσης του browser.","error");
-      // Server revocation below still prevents automatic access if online.
+    let forgotten=false,revoked=false;
+    try{await forgetRemembered(token);forgotten=true}catch{}
+    try{if(token){await api("logout","POST",{},token);revoked=true}}catch(error){revoked=error.status===401}
+    if(!forgotten&&!revoked){
+      setStatus("Δεν μπόρεσε να αφαιρεθεί η αποθηκευμένη σύνδεση. Δοκίμασε ξανά με internet.","error");
+      return;
     }
-    try{if(token)await api("logout","POST",{},token)}catch{}
     if(scheduled)clearTimeout(scheduled);
     scheduled=null;halted=false;pending=null;
     token=null;key=null;user="";locked=true;revision=0;cacheWarning="";
