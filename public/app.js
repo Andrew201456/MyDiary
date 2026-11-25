@@ -161,9 +161,9 @@ function renderToday(){
     headline=days>1?"Σε "+days+" ημέρες":days===1?"Αύριο":days===0?"Σήμερα":"Αυτές τις ημέρες";
     subtitle="Εκτιμώμενη έναρξη · "+dateLabel(p.period);
   }
-  const heroText=cloud?.username==="markarv"
-    ? '<h2 class="personal-message">Να να πίνεις πολυ νερο Μαρια, ο αντρας σου</h2>'
-    : '<small>Επόμενη περίοδος</small><h2>'+headline+'</h2><p>'+subtitle+'</p>';
+  const postscript=cloud?.username==="markarv"
+    ? '<p class="personal-message"><strong>Υ.Γ.</strong> Να να πίνεις πολυ νερο Μαρια, ο αντρας σου</p>'
+    : '';
   const monday=addDays(today,-((parseDay(today).getDay()+6)%7));
   const week=weekdays.map((name,index)=>{
     const day=addDays(monday,index),active=day===today,recorded=!!state.days[day]?.period;
@@ -172,8 +172,8 @@ function renderToday(){
   }).join("");
   const longDate=parseDay(today).toLocaleDateString("el-GR",{weekday:"long",day:"numeric",month:"long"});
   main.innerHTML='<div class="today-layout"><section class="today-overview">'+
-    '<div class="hero">'+heroText+
-    '<button class="btn" data-edit="'+today+'">＋ Καταχώρηση για σήμερα</button></div>'+
+    '<div class="hero"><small>Επόμενη περίοδος</small><h2>'+headline+'</h2><p>'+subtitle+'</p>'+
+    '<button class="btn" data-edit="'+today+'">＋ Καταχώρηση για σήμερα</button>'+postscript+'</div>'+
     '<div class="stats"><div class="stat"><label>Μέσος κύκλος</label><strong>'+p.cycle+' <small>ημέρες</small></strong></div>'+
     '<div class="stat"><label>Διάρκεια περιόδου</label><strong>'+p.periodLength+' <small>ημέρες</small></strong></div></div>'+
     '</section><section class="today-diary"><div class="week-card"><div class="section-title"><h2>Η εβδομάδα μου</h2>'+
